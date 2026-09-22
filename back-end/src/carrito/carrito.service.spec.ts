@@ -73,7 +73,12 @@ describe('CarritoService', () => {
         };
       };
     }> = [],
-    branch: { id: number; nombre: string; ubicacion: string; estado: string } | null = null,
+    branch: {
+      id: number;
+      nombre: string;
+      ubicacion: string;
+      estado: string;
+    } | null = null,
   ) => ({
     id: 1,
     creadoEn: now,
@@ -156,6 +161,24 @@ describe('CarritoService', () => {
       data: { sucursalId: 3 },
     });
     expect(result).toMatchObject({ sucursal: branch, detalles: [] });
+  });
+
+  it('rechaza seleccionar una sucursal inactiva', async () => {
+    transaction.$queryRaw
+      .mockResolvedValueOnce([{ id: 1, sucursalId: null }])
+      .mockResolvedValueOnce([
+        {
+          id: 3,
+          nombre: 'Central',
+          ubicacion: 'Centro',
+          estado: 'INACTIVO',
+        },
+      ]);
+
+    await expect(
+      service.selectBranch({ sucursalId: 3 }, customer),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(transaction.carrito.update).not.toHaveBeenCalled();
   });
 
   it('incrementa una variante existente y valida la cantidad acumulada', async () => {
@@ -247,12 +270,33 @@ describe('CarritoService', () => {
     transaction.$queryRaw.mockResolvedValue([{ id: 1, sucursalId: null }]);
 
     await expect(
-      service.addDetail(
-        { varianteProductoId: 12, cantidad: 1 },
-        customer,
-      ),
+      service.addDetail({ varianteProductoId: 12, cantidad: 1 }, customer),
     ).rejects.toBeInstanceOf(ConflictException);
     expect(variantesService.resolveActiveForPurchase).not.toHaveBeenCalled();
+  });
+
+  it('no crea detalles cuando la variante no es comercializable', async () => {
+    transaction.$queryRaw
+      .mockResolvedValueOnce([{ id: 1, sucursalId: 3 }])
+      .mockResolvedValueOnce([
+        {
+          id: 3,
+          nombre: 'Central',
+          ubicacion: 'Centro',
+          estado: 'ACTIVO',
+        },
+      ]);
+    variantesService.resolveActiveForPurchase.mockRejectedValue(
+      new ConflictException(
+        'Todas las variantes y sus catálogos deben estar activos.',
+      ),
+    );
+
+    await expect(
+      service.addDetail({ varianteProductoId: 12, cantidad: 1 }, customer),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(inventarioService.ensureAvailability).not.toHaveBeenCalled();
+    expect(transaction.detalleCarrito.upsert).not.toHaveBeenCalled();
   });
 
   it('no permite que otro usuario elimine detalles ajenos', async () => {

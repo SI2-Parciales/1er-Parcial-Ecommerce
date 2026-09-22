@@ -377,9 +377,7 @@ export class CarritoService {
         cantidadDisponible: availableQuantity,
         comercializable: commercial,
         disponible:
-          branchActive &&
-          commercial &&
-          availableQuantity >= detail.cantidad,
+          branchActive && commercial && availableQuantity >= detail.cantidad,
         variante: {
           id: variant.id,
           sku: variant.sku,

@@ -14,9 +14,7 @@ describe('migración CU-08', () => {
 
     expect(migration).toMatch(/CREATE TABLE "carritos"/i);
     expect(migration).toMatch(/"sucursal_id" INTEGER/i);
-    expect(migration).toMatch(
-      /CREATE UNIQUE INDEX "carritos_usuario_id_key"/i,
-    );
+    expect(migration).toMatch(/CREATE UNIQUE INDEX "carritos_usuario_id_key"/i);
     expect(migration).toMatch(/CREATE TABLE "detalles_carrito"/i);
     expect(migration).toMatch(/CHECK \("cantidad" > 0\)/i);
     expect(migration).toMatch(

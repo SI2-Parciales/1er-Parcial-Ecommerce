@@ -133,7 +133,9 @@ export class InventarioService {
     sucursalId: number,
     variantIds: number[],
   ): Promise<Map<number, number>> {
-    const uniqueIds = [...new Set(variantIds)].sort((left, right) => left - right);
+    const uniqueIds = [...new Set(variantIds)].sort(
+      (left, right) => left - right,
+    );
     if (uniqueIds.length === 0) return new Map();
 
     const rows = await transaction.$queryRaw<AvailableQuantityRow[]>(Prisma.sql`

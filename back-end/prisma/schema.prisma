@@ -60,8 +60,8 @@ model Usuario {
   sucursalId            Int?                   @map("sucursal_id")
   sucursal              Sucursal?              @relation(fields: [sucursalId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   movimientosInventario MovimientoInventario[]
-  ventasComoCajero      Venta[]                 @relation("VentaCajero")
-  ventasComoCliente     Venta[]                 @relation("VentaCliente")
+  ventasComoCajero      Venta[]                @relation("VentaCajero")
+  ventasComoCliente     Venta[]                @relation("VentaCliente")
   carrito               Carrito?
 
   @@index([sucursalId])
@@ -202,21 +202,21 @@ model MovimientoInventario {
 }
 
 model Venta {
-  id                   Int          @id @default(autoincrement())
-  canal                CanalVenta
-  sucursalId           Int          @map("sucursal_id")
-  cajeroId             Int?         @map("cajero_id")
-  clienteId            Int?         @map("cliente_id")
-  nombreFacturacion    String       @map("nombre_facturacion") @db.VarChar(200)
-  documentoFacturacion String       @map("documento_facturacion") @db.VarChar(50)
-  fecha                DateTime     @default(now())
-  total                Decimal      @db.Decimal(14, 2)
-  estado               EstadoVenta @default(PENDIENTE_PAGO)
-  sucursal             Sucursal     @relation(fields: [sucursalId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  cajero               Usuario?     @relation("VentaCajero", fields: [cajeroId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  cliente              Usuario?     @relation("VentaCliente", fields: [clienteId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  detalles             DetalleVenta[]
-  pagos                Pago[]
+  id                    Int                    @id @default(autoincrement())
+  canal                 CanalVenta
+  sucursalId            Int                    @map("sucursal_id")
+  cajeroId              Int?                   @map("cajero_id")
+  clienteId             Int?                   @map("cliente_id")
+  nombreFacturacion     String                 @map("nombre_facturacion") @db.VarChar(200)
+  documentoFacturacion  String                 @map("documento_facturacion") @db.VarChar(50)
+  fecha                 DateTime               @default(now())
+  total                 Decimal                @db.Decimal(14, 2)
+  estado                EstadoVenta            @default(PENDIENTE_PAGO)
+  sucursal              Sucursal               @relation(fields: [sucursalId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  cajero                Usuario?               @relation("VentaCajero", fields: [cajeroId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  cliente               Usuario?               @relation("VentaCliente", fields: [clienteId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  detalles              DetalleVenta[]
+  pagos                 Pago[]
   movimientosInventario MovimientoInventario[]
 
   @@index([sucursalId])

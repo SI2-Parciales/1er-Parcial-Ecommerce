@@ -57,7 +57,10 @@ class CarritoProductoDto {
   @ApiProperty({ example: 'Polera básica' })
   nombre!: string;
 
-  @ApiPropertyOptional({ example: '/uploads/productos/polera.webp', nullable: true })
+  @ApiPropertyOptional({
+    example: '/uploads/productos/polera.webp',
+    nullable: true,
+  })
   imagenUrl!: string | null;
 
   @ApiProperty({ example: 'ACTIVO' })
