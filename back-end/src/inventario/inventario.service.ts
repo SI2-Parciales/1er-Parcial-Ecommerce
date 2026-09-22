@@ -85,6 +85,11 @@ interface LockedAvailabilityRow extends LockedInventoryRow {
   varianteProductoId: number;
 }
 
+interface AvailableQuantityRow {
+  varianteProductoId: number;
+  cantidadDisponible: DatabaseInteger;
+}
+
 export interface CantidadInventarioSolicitada {
   varianteProductoId: number;
   cantidad: number;
@@ -123,6 +128,36 @@ type AvailabilityRecord = Prisma.InventarioGetPayload<{
 export class InventarioService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async getAvailableQuantities(
+    transaction: Prisma.TransactionClient,
+    sucursalId: number,
+    variantIds: number[],
+  ): Promise<Map<number, number>> {
+    const uniqueIds = [...new Set(variantIds)].sort((left, right) => left - right);
+    if (uniqueIds.length === 0) return new Map();
+
+    const rows = await transaction.$queryRaw<AvailableQuantityRow[]>(Prisma.sql`
+      SELECT
+        "variante_producto_id" AS "varianteProductoId",
+        ("cantidad_fisica" - "cantidad_reservada" - "cantidad_no_disponible")::bigint
+          AS "cantidadDisponible"
+      FROM "inventarios"
+      WHERE "sucursal_id" = ${sucursalId}
+        AND "variante_producto_id" IN (${Prisma.join(uniqueIds)})
+      ORDER BY "variante_producto_id" ASC
+    `);
+    const quantities = new Map<number, number>(
+      uniqueIds.map((variantId) => [variantId, 0]),
+    );
+    for (const row of rows) {
+      quantities.set(
+        row.varianteProductoId,
+        this.toSafeNumber(row.cantidadDisponible),
+      );
+    }
+    return quantities;
+  }
+
   async ensureAvailability(
     transaction: Prisma.TransactionClient,
     sucursalId: number,
@@ -147,10 +182,7 @@ export class InventarioService {
       `,
     );
     const byVariant = new Map(
-      inventories.map((inventory) => [
-        inventory.varianteProductoId,
-        inventory,
-      ]),
+      inventories.map((inventory) => [inventory.varianteProductoId, inventory]),
     );
 
     for (const item of requested) {
@@ -166,6 +198,63 @@ export class InventarioService {
         );
       }
     }
+  }
+
+  async applySaleOutput(
+    transaction: Prisma.TransactionClient,
+    sucursalId: number,
+    requested: CantidadInventarioSolicitada[],
+  ) {
+    if (requested.length === 0) return [];
+    const ordered = [...requested].sort(
+      (left, right) => left.varianteProductoId - right.varianteProductoId,
+    );
+    const variantIds = ordered.map((item) => item.varianteProductoId);
+    const inventories = await transaction.$queryRaw<LockedAvailabilityRow[]>(
+      Prisma.sql`
+        SELECT
+          "id" AS "id",
+          "sucursal_id" AS "sucursalId",
+          "variante_producto_id" AS "varianteProductoId",
+          "cantidad_fisica" AS "cantidadFisica",
+          "cantidad_reservada" AS "cantidadReservada",
+          "cantidad_no_disponible" AS "cantidadNoDisponible"
+        FROM "inventarios"
+        WHERE "sucursal_id" = ${sucursalId}
+          AND "variante_producto_id" IN (${Prisma.join(variantIds)})
+        ORDER BY "variante_producto_id" ASC
+        FOR UPDATE
+      `,
+    );
+    const byVariant = new Map(
+      inventories.map((inventory) => [inventory.varianteProductoId, inventory]),
+    );
+
+    for (const item of ordered) {
+      const inventory = byVariant.get(item.varianteProductoId);
+      const available = inventory
+        ? inventory.cantidadFisica -
+          inventory.cantidadReservada -
+          inventory.cantidadNoDisponible
+        : 0;
+      if (available < item.cantidad) {
+        throw new ConflictException(
+          'No existen suficientes unidades disponibles para completar la venta.',
+        );
+      }
+    }
+
+    const updated = [];
+    for (const item of ordered) {
+      const inventory = byVariant.get(item.varianteProductoId)!;
+      const record = await transaction.inventario.update({
+        where: { id: inventory.id },
+        data: { cantidadFisica: { decrement: item.cantidad } },
+        select: availabilitySelect,
+      });
+      updated.push(this.mapAvailabilityRecord(record));
+    }
+    return updated;
   }
 
   async findAll(query: QueryInventarioDto) {

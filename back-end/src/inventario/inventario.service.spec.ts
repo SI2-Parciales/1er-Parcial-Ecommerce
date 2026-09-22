@@ -651,4 +651,98 @@ describe('InventarioService', () => {
       ]),
     ).rejects.toBeInstanceOf(ConflictException);
   });
+
+  it('consulta cantidades disponibles por sucursal sin modificar inventario', async () => {
+    transaction.$queryRaw.mockResolvedValue([
+      { varianteProductoId: 8, cantidadDisponible: 5n },
+    ]);
+
+    const result = await service.getAvailableQuantities(
+      transaction as never,
+      2,
+      [9, 8, 8],
+    );
+
+    expect(result).toEqual(
+      new Map([
+        [8, 5],
+        [9, 0],
+      ]),
+    );
+    expect(transaction.inventario.update).not.toHaveBeenCalled();
+  });
+
+  it('descuenta una venta con bloqueo exclusivo sin consumir reservas', async () => {
+    transaction.$queryRaw.mockResolvedValue([
+      {
+        id: 30,
+        sucursalId: 2,
+        varianteProductoId: 8,
+        cantidadFisica: 10,
+        cantidadReservada: 2,
+        cantidadNoDisponible: 3,
+      },
+    ]);
+    transaction.inventario.update.mockResolvedValue({
+      id: 30,
+      cantidadFisica: 7,
+      cantidadReservada: 2,
+      cantidadNoDisponible: 3,
+      actualizadoEn: new Date('2026-09-22T12:00:00.000Z'),
+      sucursal: {
+        id: 2,
+        nombre: 'Central',
+        ubicacion: 'Centro',
+        estado: 'ACTIVO',
+      },
+      varianteProducto: {
+        id: 8,
+        sku: 'CHAQ-NEG-M',
+        estado: 'ACTIVO',
+        producto: { id: 2, nombre: 'Chaqueta', estado: 'ACTIVO' },
+        talla: { id: 3, nombre: 'M', estado: 'ACTIVO' },
+        color: {
+          id: 4,
+          nombre: 'Negro',
+          codigoHex: '#000000',
+          estado: 'ACTIVO',
+        },
+      },
+    });
+
+    const result = await service.applySaleOutput(transaction as never, 2, [
+      { varianteProductoId: 8, cantidad: 3 },
+    ]);
+
+    expect(transaction.inventario.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 30 },
+        data: { cantidadFisica: { decrement: 3 } },
+      }),
+    );
+    expect(result[0]).toMatchObject({
+      cantidadFisica: 7,
+      cantidadReservada: 2,
+      cantidadNoDisponible: 3,
+      cantidadDisponible: 2,
+    });
+
+    transaction.$queryRaw.mockResolvedValue([
+      {
+        id: 30,
+        sucursalId: 2,
+        varianteProductoId: 8,
+        cantidadFisica: 10,
+        cantidadReservada: 2,
+        cantidadNoDisponible: 3,
+      },
+    ]);
+    transaction.inventario.update.mockClear();
+    await expect(
+      service.applySaleOutput(transaction as never, 2, [
+        { varianteProductoId: 8, cantidad: 6 },
+      ]),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(transaction.inventario.update).not.toHaveBeenCalled();
+  });
 });

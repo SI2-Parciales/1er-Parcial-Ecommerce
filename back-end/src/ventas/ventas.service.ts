@@ -6,7 +6,7 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { CanalVenta, Prisma } from '@prisma/client';
+import { CanalVenta, EstadoVenta, Prisma } from '@prisma/client';
 import { ACTOR_ROLE, ActorRole, ROLE_LEVEL } from '../auth/auth.constants.js';
 import type { AuthenticatedUser } from '../auth/guards/jwt-auth.guard.js';
 import { InventarioService } from '../inventario/inventario.service.js';
@@ -45,6 +45,23 @@ interface LockedClientRow {
 interface AggregatedSaleLine {
   variante: VarianteCompra;
   cantidad: number;
+}
+
+interface LockedSaleRow {
+  id: number;
+  canal: CanalVenta;
+  sucursalId: number;
+  total: Prisma.Decimal;
+  estado: EstadoVenta;
+}
+
+export interface VentaPagoDetalle {
+  varianteProductoId: number;
+  cantidad: number;
+}
+
+export interface VentaPendientePago extends LockedSaleRow {
+  detalles: VentaPagoDetalle[];
 }
 
 const MAX_POSTGRES_INTEGER = 2_147_483_647;
@@ -161,6 +178,67 @@ export class VentasService {
         select: ventaSelect,
       });
       return this.mapSale(sale);
+    });
+  }
+
+  async lockPendingForPayment(
+    transaction: Prisma.TransactionClient,
+    ventaId: number,
+  ): Promise<VentaPendientePago> {
+    const rows = await transaction.$queryRaw<LockedSaleRow[]>`
+      SELECT
+        "id" AS "id",
+        "canal" AS "canal",
+        "sucursal_id" AS "sucursalId",
+        "total" AS "total",
+        "estado" AS "estado"
+      FROM "ventas"
+      WHERE "id" = ${ventaId}
+      FOR UPDATE
+    `;
+    const sale = rows[0];
+    if (!sale) {
+      throw new NotFoundException('No se encontró la venta solicitada.');
+    }
+    if (sale.estado !== EstadoVenta.PENDIENTE_PAGO) {
+      throw new ConflictException('La venta ya no está pendiente de pago.');
+    }
+    if (sale.total.lessThanOrEqualTo(0)) {
+      throw new ConflictException('La venta no tiene un importe válido.');
+    }
+
+    const detalles = await transaction.detalleVenta.findMany({
+      where: { ventaId },
+      orderBy: { varianteProductoId: 'asc' },
+      select: { varianteProductoId: true, cantidad: true },
+    });
+    if (detalles.length === 0) {
+      throw new ConflictException('La venta no contiene detalles para cobrar.');
+    }
+    return { ...sale, detalles };
+  }
+
+  async authorizeCashierForBranch(
+    transaction: Prisma.TransactionClient,
+    authenticatedUser: AuthenticatedUser,
+    sucursalId: number,
+  ): Promise<CurrentActorRow> {
+    const actor = await this.lockActor(transaction, authenticatedUser.id);
+    this.authorizeActor(actor);
+    if (actor.sucursalId !== sucursalId) {
+      throw new ForbiddenException(
+        'Solo puedes procesar ventas de tu sucursal asignada.',
+      );
+    }
+    await this.lockActiveBranch(transaction, sucursalId);
+    return actor;
+  }
+
+  async markPaid(transaction: Prisma.TransactionClient, ventaId: number) {
+    return transaction.venta.update({
+      where: { id: ventaId },
+      data: { estado: EstadoVenta.PAGADA },
+      select: { id: true, estado: true, total: true },
     });
   }
 

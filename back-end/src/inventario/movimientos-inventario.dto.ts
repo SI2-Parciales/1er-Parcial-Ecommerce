@@ -3,6 +3,7 @@ import { TipoMovimiento } from '@prisma/client';
 import { Transform, Type } from 'class-transformer';
 import {
   IsEnum,
+  IsIn,
   IsISO8601,
   IsInt,
   IsNotEmpty,
@@ -23,9 +24,19 @@ export const ORIGEN_UNIDADES = {
 export type OrigenUnidades =
   (typeof ORIGEN_UNIDADES)[keyof typeof ORIGEN_UNIDADES];
 
+export const TIPOS_MOVIMIENTO_MANUALES = [
+  TipoMovimiento.RECEPCION,
+  TipoMovimiento.TRANSFERENCIA,
+  TipoMovimiento.DEVOLUCION,
+  TipoMovimiento.MERMA,
+] as const;
+
 export class CreateMovimientoInventarioDto {
-  @ApiProperty({ enum: TipoMovimiento, example: TipoMovimiento.TRANSFERENCIA })
-  @IsEnum(TipoMovimiento)
+  @ApiProperty({
+    enum: TIPOS_MOVIMIENTO_MANUALES,
+    example: TipoMovimiento.TRANSFERENCIA,
+  })
+  @IsIn(TIPOS_MOVIMIENTO_MANUALES)
   tipo!: TipoMovimiento;
 
   @ApiProperty({ example: 15, minimum: 1 })
@@ -194,6 +205,14 @@ export class MovimientoInventarioDto {
 
   @ApiPropertyOptional({ nullable: true, example: 'Mercadería recibida' })
   observacion!: string | null;
+
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    example: 25,
+    description: 'Venta asociada cuando el movimiento es una salida VENTA.',
+  })
+  ventaId!: number | null;
 
   @ApiProperty({ type: MovimientoUsuarioDto })
   usuario!: MovimientoUsuarioDto;

@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ValidationPipe } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { EstadoPago, MetodoPago, PrismaClient } from '@prisma/client';
 import { JwtService } from '@nestjs/jwt';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import * as argon2 from 'argon2';
@@ -67,9 +67,10 @@ describeWithDatabase('AppController (e2e)', () => {
   });
 
   beforeEach(async () => {
+    await prisma.pago.deleteMany();
+    await prisma.movimientoInventario.deleteMany();
     await prisma.detalleVenta.deleteMany();
     await prisma.venta.deleteMany();
-    await prisma.movimientoInventario.deleteMany();
     await prisma.inventario.deleteMany();
     await prisma.varianteProducto.deleteMany();
     await prisma.producto.deleteMany();
@@ -2139,6 +2140,289 @@ describeWithDatabase('AppController (e2e)', () => {
     expect(await prisma.venta.count()).toBe(countBeforeFailure);
     expect(await prisma.detalleVenta.count()).toBe(3);
   });
+
+  it('procesa pagos de caja de forma atómica y protege inventario concurrente', async () => {
+    const passwordHash = await argon2.hash('unused-hash-value');
+    const cashierRole = await prisma.rol.findUniqueOrThrow({
+      where: { nombre: 'CAJERO' },
+    });
+    const firstBranch = await prisma.sucursal.create({
+      data: { nombre: 'Sucursal Pagos', ubicacion: 'Centro' },
+    });
+    const secondBranch = await prisma.sucursal.create({
+      data: { nombre: 'Sucursal Pagos Norte', ubicacion: 'Norte' },
+    });
+    const cashier = await prisma.usuario.create({
+      data: {
+        nombre: 'Cajero',
+        apellido: 'Pagos',
+        telefono: '72222222',
+        email: 'cajero-pagos@example.test',
+        passwordHash,
+        estado: 'ACTIVO',
+        rolId: cashierRole.id,
+        sucursalId: firstBranch.id,
+      },
+    });
+    const otherCashier = await prisma.usuario.create({
+      data: {
+        nombre: 'Otro',
+        apellido: 'Cajero',
+        telefono: '73333333',
+        email: 'otro-cajero-pagos@example.test',
+        passwordHash,
+        estado: 'ACTIVO',
+        rolId: cashierRole.id,
+        sucursalId: secondBranch.id,
+      },
+    });
+    const category = await prisma.categoria.create({
+      data: { nombre: 'Categoría Pagos' },
+    });
+    const size = await prisma.talla.create({ data: { nombre: 'M Pagos' } });
+    const color = await prisma.color.create({
+      data: { nombre: 'Azul Pagos', codigoHex: '#0000AA' },
+    });
+    const product = await prisma.producto.create({
+      data: {
+        nombre: 'Prenda Pagos',
+        precio: 100,
+        categoriaId: category.id,
+      },
+    });
+    const variant = await prisma.varianteProducto.create({
+      data: {
+        productoId: product.id,
+        tallaId: size.id,
+        colorId: color.id,
+        sku: 'PRENDA-PAGOS-M',
+      },
+    });
+    const inventory = await prisma.inventario.create({
+      data: {
+        sucursalId: firstBranch.id,
+        varianteProductoId: variant.id,
+        cantidadFisica: 10,
+        cantidadReservada: 1,
+        cantidadNoDisponible: 1,
+      },
+    });
+    const jwtService = app.get(JwtService);
+    const cashierToken = jwtService.sign({ sub: cashier.id, role: 'CAJERO' });
+    const otherCashierToken = jwtService.sign({
+      sub: otherCashier.id,
+      role: 'CAJERO',
+    });
+    const createSale = async (cantidad: number) =>
+      request(app.getHttpServer())
+        .post('/ventas/presenciales')
+        .set('Authorization', `Bearer ${cashierToken}`)
+        .send({ detalles: [{ varianteProductoId: variant.id, cantidad }] })
+        .expect(201);
+    const paymentPath = (saleId: number) => `/ventas/${saleId}/pagos/caja`;
+
+    const cashSale = await createSale(2);
+    const cashPayment = await request(app.getHttpServer())
+      .post(paymentPath(cashSale.body.id as number))
+      .set('Authorization', `Bearer ${cashierToken}`)
+      .send({ metodo: 'EFECTIVO', montoRecibido: 250 })
+      .expect(201);
+    expect(cashPayment.body).toMatchObject({
+      pago: {
+        ventaId: cashSale.body.id,
+        metodo: 'EFECTIVO',
+        monto: 200,
+        montoRecibido: 250,
+        cambio: 50,
+        referencia: null,
+        simulado: true,
+        estado: 'CONFIRMADO',
+      },
+      venta: { id: cashSale.body.id, estado: 'PAGADA', total: 200 },
+    });
+    const afterCash = await prisma.inventario.findUniqueOrThrow({
+      where: { id: inventory.id },
+    });
+    expect(afterCash).toMatchObject({
+      cantidadFisica: 8,
+      cantidadReservada: 1,
+      cantidadNoDisponible: 1,
+    });
+    expect(
+      await prisma.movimientoInventario.count({
+        where: { ventaId: cashSale.body.id as number, tipo: 'VENTA' },
+      }),
+    ).toBe(1);
+    await request(app.getHttpServer())
+      .post(paymentPath(cashSale.body.id as number))
+      .set('Authorization', `Bearer ${cashierToken}`)
+      .send({ metodo: 'EFECTIVO', montoRecibido: 250 })
+      .expect(409);
+    expect(
+      await prisma.movimientoInventario.count({
+        where: { ventaId: cashSale.body.id as number },
+      }),
+    ).toBe(1);
+
+    const cardSale = await createSale(1);
+    await request(app.getHttpServer())
+      .post(paymentPath(cardSale.body.id as number))
+      .set('Authorization', `Bearer ${cashierToken}`)
+      .send({ metodo: 'TARJETA', referencia: ' AUT-SIM-001 ' })
+      .expect(201)
+      .expect(({ body }) => {
+        expect(body.pago).toMatchObject({
+          metodo: 'TARJETA',
+          monto: 100,
+          montoRecibido: null,
+          cambio: null,
+          referencia: 'AUT-SIM-001',
+          simulado: true,
+        });
+      });
+    const qrSale = await createSale(1);
+    await request(app.getHttpServer())
+      .post(paymentPath(qrSale.body.id as number))
+      .set('Authorization', `Bearer ${cashierToken}`)
+      .send({ metodo: 'QR' })
+      .expect(201)
+      .expect(({ body }) => {
+        expect(body.pago).toMatchObject({
+          metodo: 'QR',
+          monto: 100,
+          referencia: null,
+          simulado: true,
+        });
+      });
+
+    const insufficientCashSale = await createSale(1);
+    await request(app.getHttpServer())
+      .post(paymentPath(insufficientCashSale.body.id as number))
+      .set('Authorization', `Bearer ${cashierToken}`)
+      .send({ metodo: 'EFECTIVO', montoRecibido: 99.99 })
+      .expect(400);
+    expect(
+      await prisma.venta.findUniqueOrThrow({
+        where: { id: insufficientCashSale.body.id as number },
+      }),
+    ).toMatchObject({ estado: 'PENDIENTE_PAGO' });
+
+    const forbiddenSale = await createSale(1);
+    await request(app.getHttpServer())
+      .post(paymentPath(forbiddenSale.body.id as number))
+      .set('Authorization', `Bearer ${otherCashierToken}`)
+      .send({ metodo: 'QR' })
+      .expect(403);
+    await request(app.getHttpServer())
+      .post(paymentPath(999999))
+      .set('Authorization', `Bearer ${cashierToken}`)
+      .send({ metodo: 'QR' })
+      .expect(404);
+
+    const lostStockSale = await createSale(3);
+    await prisma.inventario.update({
+      where: { id: inventory.id },
+      data: { cantidadFisica: { decrement: 2 } },
+    });
+    const beforeLostStockPayment = await prisma.inventario.findUniqueOrThrow({
+      where: { id: inventory.id },
+    });
+    await request(app.getHttpServer())
+      .post(paymentPath(lostStockSale.body.id as number))
+      .set('Authorization', `Bearer ${cashierToken}`)
+      .send({ metodo: 'QR' })
+      .expect(409);
+    expect(
+      await prisma.inventario.findUniqueOrThrow({
+        where: { id: inventory.id },
+      }),
+    ).toEqual(beforeLostStockPayment);
+
+    const rollbackSale = await createSale(1);
+    await prisma.pago.create({
+      data: {
+        ventaId: rollbackSale.body.id as number,
+        metodo: MetodoPago.QR,
+        monto: 100,
+        simulado: true,
+        estado: EstadoPago.CONFIRMADO,
+      },
+    });
+    const beforeRollback = await prisma.inventario.findUniqueOrThrow({
+      where: { id: inventory.id },
+    });
+    await request(app.getHttpServer())
+      .post(paymentPath(rollbackSale.body.id as number))
+      .set('Authorization', `Bearer ${cashierToken}`)
+      .send({ metodo: 'QR' })
+      .expect(409);
+    expect(
+      await prisma.inventario.findUniqueOrThrow({
+        where: { id: inventory.id },
+      }),
+    ).toEqual(beforeRollback);
+    expect(
+      await prisma.movimientoInventario.count({
+        where: { ventaId: rollbackSale.body.id as number },
+      }),
+    ).toBe(0);
+    expect(
+      await prisma.venta.findUniqueOrThrow({
+        where: { id: rollbackSale.body.id as number },
+      }),
+    ).toMatchObject({ estado: 'PENDIENTE_PAGO' });
+
+    const concurrentSale = await createSale(1);
+    const duplicateResponses = await Promise.all([
+      request(app.getHttpServer())
+        .post(paymentPath(concurrentSale.body.id as number))
+        .set('Authorization', `Bearer ${cashierToken}`)
+        .send({ metodo: 'QR' }),
+      request(app.getHttpServer())
+        .post(paymentPath(concurrentSale.body.id as number))
+        .set('Authorization', `Bearer ${cashierToken}`)
+        .send({ metodo: 'QR' }),
+    ]);
+    expect(
+      duplicateResponses
+        .map((response) => response.status)
+        .sort((left, right) => left - right),
+    ).toEqual([201, 409]);
+    expect(
+      await prisma.pago.count({
+        where: {
+          ventaId: concurrentSale.body.id as number,
+          estado: EstadoPago.CONFIRMADO,
+        },
+      }),
+    ).toBe(1);
+
+    const firstCompetingSale = await createSale(1);
+    const secondCompetingSale = await createSale(1);
+    const competingResponses = await Promise.all([
+      request(app.getHttpServer())
+        .post(paymentPath(firstCompetingSale.body.id as number))
+        .set('Authorization', `Bearer ${cashierToken}`)
+        .send({ metodo: 'QR' }),
+      request(app.getHttpServer())
+        .post(paymentPath(secondCompetingSale.body.id as number))
+        .set('Authorization', `Bearer ${cashierToken}`)
+        .send({ metodo: 'QR' }),
+    ]);
+    expect(
+      competingResponses
+        .map((response) => response.status)
+        .sort((left, right) => left - right),
+    ).toEqual([201, 409]);
+    const finalInventory = await prisma.inventario.findUniqueOrThrow({
+      where: { id: inventory.id },
+    });
+    expect(
+      finalInventory.cantidadFisica -
+        finalInventory.cantidadReservada -
+        finalInventory.cantidadNoDisponible,
+    ).toBe(0);
+  }, 30_000);
 
   it('migra usuarios VENDEDOR existentes a CAJERO conservando su relación', async () => {
     const legacyRole = await prisma.rol.upsert({

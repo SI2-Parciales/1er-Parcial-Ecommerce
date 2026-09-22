@@ -17,6 +17,8 @@ import { ColoresModule } from './colores/colores.module.js';
 import { ProductosModule } from './productos/productos.module.js';
 import { InventarioModule } from './inventario/inventario.module.js';
 import { VentasModule } from './ventas/ventas.module.js';
+import { PagosModule } from './pagos/pagos.module.js';
+import { CarritoModule } from './carrito/carrito.module.js';
 
 @Module({
   imports: [
@@ -40,6 +42,8 @@ import { VentasModule } from './ventas/ventas.module.js';
     ProductosModule,
     InventarioModule,
     VentasModule,
+    PagosModule,
+    CarritoModule,
   ],
   controllers: [AppController],
   providers: [

@@ -12,6 +12,6 @@ import { MovimientosInventarioService } from './movimientos-inventario.service.j
     DisponibilidadPublicaController,
   ],
   providers: [InventarioService, MovimientosInventarioService],
-  exports: [InventarioService],
+  exports: [InventarioService, MovimientosInventarioService],
 })
 export class InventarioModule {}

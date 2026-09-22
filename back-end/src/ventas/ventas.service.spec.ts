@@ -17,7 +17,8 @@ import { VentasService } from './ventas.service.js';
 describe('VentasService', () => {
   const transaction = {
     $queryRaw: vi.fn(),
-    venta: { create: vi.fn() },
+    venta: { create: vi.fn(), update: vi.fn() },
+    detalleVenta: { findMany: vi.fn() },
   };
   const prisma = {
     $transaction: vi.fn(async (callback: (tx: typeof transaction) => unknown) =>
@@ -291,5 +292,57 @@ describe('VentasService', () => {
       ),
     ).rejects.toBeInstanceOf(ConflictException);
     expect(transaction.venta.create).not.toHaveBeenCalled();
+  });
+
+  it('bloquea una venta pendiente con sus detalles y la marca pagada', async () => {
+    transaction.$queryRaw.mockReset().mockResolvedValue([
+      {
+        id: 20,
+        canal: CanalVenta.PRESENCIAL,
+        sucursalId: 2,
+        total: new Prisma.Decimal('129.90'),
+        estado: EstadoVenta.PENDIENTE_PAGO,
+      },
+    ]);
+    transaction.detalleVenta.findMany.mockResolvedValue([
+      { varianteProductoId: 11, cantidad: 2 },
+    ]);
+    transaction.venta.update.mockResolvedValue({
+      id: 20,
+      estado: EstadoVenta.PAGADA,
+      total: new Prisma.Decimal('129.90'),
+    });
+
+    const locked = await service.lockPendingForPayment(
+      transaction as never,
+      20,
+    );
+    expect(locked).toMatchObject({
+      id: 20,
+      estado: 'PENDIENTE_PAGO',
+      detalles: [{ varianteProductoId: 11, cantidad: 2 }],
+    });
+    await service.markPaid(transaction as never, 20);
+    expect(transaction.venta.update).toHaveBeenCalledWith({
+      where: { id: 20 },
+      data: { estado: EstadoVenta.PAGADA },
+      select: { id: true, estado: true, total: true },
+    });
+  });
+
+  it('rechaza una venta ya pagada antes de consultar sus detalles', async () => {
+    transaction.$queryRaw.mockReset().mockResolvedValue([
+      {
+        id: 20,
+        canal: CanalVenta.PRESENCIAL,
+        sucursalId: 2,
+        total: new Prisma.Decimal('129.90'),
+        estado: EstadoVenta.PAGADA,
+      },
+    ]);
+    await expect(
+      service.lockPendingForPayment(transaction as never, 20),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(transaction.detalleVenta.findMany).not.toHaveBeenCalled();
   });
 });
