@@ -55,8 +55,10 @@ interface LockedSaleRow {
   id: number;
   canal: CanalVenta;
   sucursalId: number;
+  clienteId: number | null;
   total: Prisma.Decimal;
   estado: EstadoVenta;
+  fecha: Date;
 }
 
 export interface VentaPagoDetalle {
@@ -266,8 +268,10 @@ export class VentasService {
         "id" AS "id",
         "canal" AS "canal",
         "sucursal_id" AS "sucursalId",
+        "cliente_id" AS "clienteId",
         "total" AS "total",
-        "estado" AS "estado"
+        "estado" AS "estado",
+        "fecha" AS "fecha"
       FROM "ventas"
       WHERE "id" = ${ventaId}
       FOR UPDATE
@@ -308,6 +312,29 @@ export class VentasService {
     }
     await this.lockActiveBranch(transaction, sucursalId);
     return actor;
+  }
+
+  async authorizeDigitalBuyerForSale(
+    transaction: Prisma.TransactionClient,
+    authenticatedUser: AuthenticatedUser,
+    sale: VentaPendientePago,
+  ): Promise<{ id: number }> {
+    if (authenticatedUser.role !== ACTOR_ROLE.CLIENTE) {
+      throw new ForbiddenException(
+        'Solo los clientes pueden pagar compras digitales.',
+      );
+    }
+    const client = await this.authorizeDigitalClient(
+      transaction,
+      authenticatedUser.id,
+    );
+    if (sale.clienteId !== client.id) {
+      throw new ForbiddenException(
+        'Solo puedes pagar tus propias compras digitales.',
+      );
+    }
+    await this.lockActiveBranch(transaction, sale.sucursalId);
+    return { id: client.id };
   }
 
   async markPaid(transaction: Prisma.TransactionClient, ventaId: number) {

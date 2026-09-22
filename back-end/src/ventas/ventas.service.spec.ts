@@ -564,8 +564,10 @@ describe('VentasService', () => {
         id: 20,
         canal: CanalVenta.PRESENCIAL,
         sucursalId: 2,
+        clienteId: null,
         total: new Prisma.Decimal('129.90'),
         estado: EstadoVenta.PENDIENTE_PAGO,
+        fecha: new Date('2026-09-22T14:00:00.000Z'),
       },
     ]);
     transaction.detalleVenta.findMany.mockResolvedValue([
@@ -583,6 +585,7 @@ describe('VentasService', () => {
     );
     expect(locked).toMatchObject({
       id: 20,
+      clienteId: null,
       estado: 'PENDIENTE_PAGO',
       detalles: [{ varianteProductoId: 11, cantidad: 2 }],
     });
@@ -594,14 +597,54 @@ describe('VentasService', () => {
     });
   });
 
+  it('autoriza únicamente al propietario activo de una venta digital', async () => {
+    const digitalSale = {
+      id: 40,
+      canal: CanalVenta.DIGITAL,
+      sucursalId: 2,
+      clienteId: 30,
+      total: new Prisma.Decimal('339.80'),
+      estado: EstadoVenta.PENDIENTE_PAGO,
+      fecha: new Date('2026-09-22T14:00:00.000Z'),
+      detalles: [{ varianteProductoId: 11, cantidad: 2 }],
+    };
+    transaction.$queryRaw
+      .mockReset()
+      .mockResolvedValueOnce([{ id: 30, estado: 'ACTIVO', role: 'CLIENTE' }])
+      .mockResolvedValueOnce([
+        { id: 2, nombre: 'Sucursal Central', estado: 'ACTIVO' },
+      ]);
+
+    await expect(
+      service.authorizeDigitalBuyerForSale(
+        transaction as never,
+        customer,
+        digitalSale,
+      ),
+    ).resolves.toEqual({ id: 30 });
+
+    transaction.$queryRaw.mockReset().mockResolvedValueOnce([
+      { id: 31, estado: 'ACTIVO', role: 'CLIENTE' },
+    ]);
+    await expect(
+      service.authorizeDigitalBuyerForSale(
+        transaction as never,
+        { ...customer, id: 31 },
+        digitalSale,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
   it('rechaza una venta ya pagada antes de consultar sus detalles', async () => {
     transaction.$queryRaw.mockReset().mockResolvedValue([
       {
         id: 20,
         canal: CanalVenta.PRESENCIAL,
         sucursalId: 2,
+        clienteId: null,
         total: new Prisma.Decimal('129.90'),
         estado: EstadoVenta.PAGADA,
+        fecha: new Date('2026-09-22T14:00:00.000Z'),
       },
     ]);
     await expect(

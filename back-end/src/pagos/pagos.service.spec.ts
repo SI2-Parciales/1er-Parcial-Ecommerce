@@ -12,6 +12,7 @@ import {
 } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuthenticatedUser } from '../auth/guards/jwt-auth.guard.js';
+import { CarritoService } from '../carrito/carrito.service.js';
 import { MovimientosInventarioService } from '../inventario/movimientos-inventario.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { VentasService } from '../ventas/ventas.service.js';
@@ -29,9 +30,14 @@ describe('PagosService', () => {
   const ventas = {
     lockPendingForPayment: vi.fn(),
     authorizeCashierForBranch: vi.fn(),
+    authorizeDigitalBuyerForSale: vi.fn(),
     markPaid: vi.fn(),
   };
   const movimientos = { registerSaleOutputs: vi.fn() };
+  const carrito = {
+    preparePaidSaleReconciliation: vi.fn(),
+    applyPaidSaleReconciliation: vi.fn(),
+  };
   const user: AuthenticatedUser = {
     id: 7,
     nombre: 'Cajero',
@@ -42,9 +48,22 @@ describe('PagosService', () => {
     id: 20,
     canal: CanalVenta.PRESENCIAL,
     sucursalId: 2,
+    clienteId: null,
     total: new Prisma.Decimal('129.90'),
     estado: EstadoVenta.PENDIENTE_PAGO,
+    fecha: new Date('2026-09-22T14:00:00.000Z'),
     detalles: [{ varianteProductoId: 11, cantidad: 2 }],
+  };
+  const customer: AuthenticatedUser = {
+    id: 30,
+    nombre: 'Cliente',
+    email: 'cliente@example.test',
+    role: 'CLIENTE',
+  };
+  const reconciliation = {
+    carritoId: 5,
+    eliminarDetalleIds: [8],
+    actualizarDetalles: [],
   };
   let service: PagosService;
 
@@ -54,15 +73,19 @@ describe('PagosService', () => {
       prisma as unknown as PrismaService,
       ventas as unknown as VentasService,
       movimientos as unknown as MovimientosInventarioService,
+      carrito as unknown as CarritoService,
     );
     ventas.lockPendingForPayment.mockResolvedValue(sale);
     ventas.authorizeCashierForBranch.mockResolvedValue({ id: 7 });
+    ventas.authorizeDigitalBuyerForSale.mockResolvedValue({ id: 30 });
     ventas.markPaid.mockResolvedValue({
       id: 20,
       estado: EstadoVenta.PAGADA,
       total: sale.total,
     });
     movimientos.registerSaleOutputs.mockResolvedValue([]);
+    carrito.preparePaidSaleReconciliation.mockResolvedValue(reconciliation);
+    carrito.applyPaidSaleReconciliation.mockResolvedValue(undefined);
   });
 
   it('confirma efectivo usando el total real y calcula el cambio', async () => {
@@ -147,6 +170,154 @@ describe('PagosService', () => {
       referencia: referencia ?? null,
       simulado: true,
     });
+  });
+
+  it.each([MetodoPago.TARJETA, MetodoPago.QR])(
+    'confirma un pago electrónico %s con referencia interna',
+    async (metodo) => {
+      const digitalSale = {
+        ...sale,
+        canal: CanalVenta.DIGITAL,
+        clienteId: 30,
+      };
+      ventas.lockPendingForPayment.mockResolvedValue(digitalSale);
+      transaction.pago.create.mockImplementation(
+        ({ data }: { data: Record<string, unknown> }) => ({
+          id: 32,
+          ventaId: 20,
+          metodo: data.metodo,
+          monto: data.monto,
+          montoRecibido: data.montoRecibido,
+          cambio: data.cambio,
+          referencia: data.referencia,
+          simulado: true,
+          estado: EstadoPago.CONFIRMADO,
+          fecha: new Date('2026-09-22T15:00:00.000Z'),
+        }),
+      );
+
+      const result = await service.processElectronicPayment(
+        20,
+        { metodo },
+        customer,
+      );
+
+      expect(ventas.authorizeDigitalBuyerForSale).toHaveBeenCalledWith(
+        transaction,
+        customer,
+        digitalSale,
+      );
+      expect(carrito.preparePaidSaleReconciliation).toHaveBeenCalledWith(
+        transaction,
+        30,
+        sale.fecha,
+        sale.detalles,
+      );
+      expect(movimientos.registerSaleOutputs).toHaveBeenCalledWith(
+        transaction,
+        20,
+        30,
+        2,
+        sale.detalles,
+      );
+      expect(transaction.pago.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            metodo,
+            monto: sale.total,
+            montoRecibido: null,
+            cambio: null,
+            referencia: expect.stringMatching(
+              new RegExp(`^SIM-${metodo}-[0-9a-f-]{36}$`),
+            ),
+          }),
+        }),
+      );
+      expect(carrito.applyPaidSaleReconciliation).toHaveBeenCalledWith(
+        transaction,
+        reconciliation,
+      );
+      expect(result.pago).toMatchObject({
+        metodo,
+        monto: 129.9,
+        montoRecibido: null,
+        cambio: null,
+        referencia: expect.stringMatching(`^SIM-${metodo}-`),
+        simulado: true,
+      });
+    },
+  );
+
+  it('rechaza EFECTIVO antes de abrir la transacción electrónica', async () => {
+    await expect(
+      service.processElectronicPayment(
+        20,
+        { metodo: MetodoPago.EFECTIVO },
+        customer,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('rechaza actores que no sean clientes antes de leer la venta', async () => {
+    await expect(
+      service.processElectronicPayment(
+        20,
+        { metodo: MetodoPago.QR },
+        { ...user, role: 'ADMINISTRADOR' },
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(ventas.lockPendingForPayment).not.toHaveBeenCalled();
+  });
+
+  it('rechaza ventas presenciales o de otro comprador por el flujo electrónico', async () => {
+    await expect(
+      service.processElectronicPayment(
+        20,
+        { metodo: MetodoPago.QR },
+        customer,
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    ventas.lockPendingForPayment.mockResolvedValueOnce({
+      ...sale,
+      canal: CanalVenta.DIGITAL,
+      clienteId: 31,
+    });
+    ventas.authorizeDigitalBuyerForSale.mockRejectedValueOnce(
+      new ForbiddenException('Venta ajena.'),
+    );
+    await expect(
+      service.processElectronicPayment(
+        20,
+        { metodo: MetodoPago.TARJETA },
+        customer,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(movimientos.registerSaleOutputs).not.toHaveBeenCalled();
+  });
+
+  it('no aplica la limpieza del carrito si falla la confirmación digital', async () => {
+    ventas.lockPendingForPayment.mockResolvedValue({
+      ...sale,
+      canal: CanalVenta.DIGITAL,
+      clienteId: 30,
+    });
+    movimientos.registerSaleOutputs.mockRejectedValue(
+      new ConflictException('Sin existencias.'),
+    );
+
+    await expect(
+      service.processElectronicPayment(
+        20,
+        { metodo: MetodoPago.QR },
+        customer,
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(transaction.pago.create).not.toHaveBeenCalled();
+    expect(ventas.markPaid).not.toHaveBeenCalled();
+    expect(carrito.applyPaidSaleReconciliation).not.toHaveBeenCalled();
   });
 
   it('rechaza efectivo insuficiente antes de modificar inventario', async () => {

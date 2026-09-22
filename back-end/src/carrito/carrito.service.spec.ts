@@ -181,6 +181,90 @@ describe('CarritoService', () => {
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
+  it('prepara y aplica una limpieza selectiva para un carrito sin cambios posteriores', async () => {
+    transaction.$queryRaw.mockResolvedValue([
+      {
+        id: 1,
+        sucursalId: 3,
+        actualizadoEn: new Date('2026-09-22T11:00:00.000Z'),
+      },
+    ]);
+    transaction.detalleCarrito.findMany.mockResolvedValue([
+      { id: 7, varianteProductoId: 12, cantidad: 2 },
+      { id: 8, varianteProductoId: 14, cantidad: 4 },
+      { id: 9, varianteProductoId: 15, cantidad: 1 },
+    ]);
+
+    const plan = await service.preparePaidSaleReconciliation(
+      transaction as never,
+      customer.id,
+      now,
+      [
+        { varianteProductoId: 12, cantidad: 2 },
+        { varianteProductoId: 14, cantidad: 1 },
+        { varianteProductoId: 15, cantidad: 2 },
+      ],
+    );
+
+    expect(plan).toEqual({
+      carritoId: 1,
+      eliminarDetalleIds: [7],
+      actualizarDetalles: [{ id: 8, cantidad: 3 }],
+    });
+    await service.applyPaidSaleReconciliation(transaction as never, plan);
+    expect(transaction.detalleCarrito.deleteMany).toHaveBeenCalledWith({
+      where: { carritoId: 1, id: { in: [7] } },
+    });
+    expect(transaction.detalleCarrito.update).toHaveBeenCalledWith({
+      where: { id: 8 },
+      data: { cantidad: 3 },
+    });
+    expect(transaction.carrito.update).toHaveBeenCalledWith({
+      where: { id: 1 },
+      data: { actualizadoEn: expect.any(Date) },
+    });
+  });
+
+  it('conserva todo el carrito si fue modificado después o al crear la venta', async () => {
+    transaction.$queryRaw.mockResolvedValue([
+      { id: 1, sucursalId: 3, actualizadoEn: now },
+    ]);
+
+    const plan = await service.preparePaidSaleReconciliation(
+      transaction as never,
+      customer.id,
+      now,
+      [{ varianteProductoId: 12, cantidad: 2 }],
+    );
+    await service.applyPaidSaleReconciliation(transaction as never, plan);
+
+    expect(plan).toEqual({
+      carritoId: 1,
+      eliminarDetalleIds: [],
+      actualizarDetalles: [],
+    });
+    expect(transaction.detalleCarrito.findMany).not.toHaveBeenCalled();
+    expect(transaction.detalleCarrito.deleteMany).not.toHaveBeenCalled();
+    expect(transaction.detalleCarrito.update).not.toHaveBeenCalled();
+    expect(transaction.carrito.update).not.toHaveBeenCalled();
+  });
+
+  it('continúa sin recrear el carrito cuando ya no existe', async () => {
+    transaction.$queryRaw.mockResolvedValue([]);
+
+    const plan = await service.preparePaidSaleReconciliation(
+      transaction as never,
+      customer.id,
+      now,
+      [{ varianteProductoId: 12, cantidad: 2 }],
+    );
+    await service.applyPaidSaleReconciliation(transaction as never, plan);
+
+    expect(plan.carritoId).toBeNull();
+    expect(transaction.$executeRaw).not.toHaveBeenCalled();
+    expect(transaction.detalleCarrito.findMany).not.toHaveBeenCalled();
+  });
+
   it('selecciona una sucursal activa sin modificar los detalles', async () => {
     const branch = {
       id: 3,

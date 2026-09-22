@@ -3,6 +3,7 @@ import { EstadoPago, MetodoPago } from '@prisma/client';
 import { Transform, Type } from 'class-transformer';
 import {
   IsEnum,
+  IsIn,
   IsNotEmpty,
   IsNumber,
   IsString,
@@ -44,6 +45,16 @@ export class ProcessCashPaymentDto {
   @IsNotEmpty()
   @MaxLength(100)
   referencia?: string;
+}
+
+export class ProcessElectronicPaymentDto {
+  @ApiProperty({
+    enum: [MetodoPago.TARJETA, MetodoPago.QR],
+    example: MetodoPago.TARJETA,
+  })
+  @IsEnum(MetodoPago)
+  @IsIn([MetodoPago.TARJETA, MetodoPago.QR])
+  metodo!: MetodoPago;
 }
 
 export class PagoConfirmadoDto {

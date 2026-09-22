@@ -1,11 +1,12 @@
 import { Module } from '@nestjs/common';
+import { CarritoModule } from '../carrito/carrito.module.js';
 import { InventarioModule } from '../inventario/inventario.module.js';
 import { VentasModule } from '../ventas/ventas.module.js';
 import { PagosController } from './pagos.controller.js';
 import { PagosService } from './pagos.service.js';
 
 @Module({
-  imports: [VentasModule, InventarioModule],
+  imports: [VentasModule, InventarioModule, CarritoModule],
   controllers: [PagosController],
   providers: [PagosService],
 })

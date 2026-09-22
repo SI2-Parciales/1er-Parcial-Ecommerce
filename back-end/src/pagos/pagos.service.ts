@@ -1,14 +1,24 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
 } from '@nestjs/common';
 import { CanalVenta, EstadoPago, MetodoPago, Prisma } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
+import { ACTOR_ROLE } from '../auth/auth.constants.js';
 import type { AuthenticatedUser } from '../auth/guards/jwt-auth.guard.js';
+import {
+  CarritoService,
+  type CarritoPagoReconciliation,
+} from '../carrito/carrito.service.js';
 import { MovimientosInventarioService } from '../inventario/movimientos-inventario.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { VentasService } from '../ventas/ventas.service.js';
-import { ProcessCashPaymentDto } from './pagos.dto.js';
+import {
+  ProcessCashPaymentDto,
+  ProcessElectronicPaymentDto,
+} from './pagos.dto.js';
 
 interface NormalizedPayment {
   metodo: MetodoPago;
@@ -37,6 +47,7 @@ export class PagosService {
     private readonly prisma: PrismaService,
     private readonly ventasService: VentasService,
     private readonly movimientosService: MovimientosInventarioService,
+    private readonly carritoService: CarritoService,
   ) {}
 
   async processCashierPayment(
@@ -44,24 +55,76 @@ export class PagosService {
     input: ProcessCashPaymentDto,
     authenticatedUser: AuthenticatedUser,
   ) {
-    const normalized = this.normalizePayment(input);
+    const normalized = this.normalizeCashierPayment(input);
+    return this.processConfirmedPayment(
+      ventaId,
+      normalized,
+      authenticatedUser,
+      CanalVenta.PRESENCIAL,
+    );
+  }
 
+  async processElectronicPayment(
+    ventaId: number,
+    input: ProcessElectronicPaymentDto,
+    authenticatedUser: AuthenticatedUser,
+  ) {
+    if (authenticatedUser.role !== ACTOR_ROLE.CLIENTE) {
+      throw new ForbiddenException(
+        'Solo los clientes pueden pagar compras digitales.',
+      );
+    }
+    const normalized = this.normalizeElectronicPayment(input);
+    return this.processConfirmedPayment(
+      ventaId,
+      normalized,
+      authenticatedUser,
+      CanalVenta.DIGITAL,
+    );
+  }
+
+  private async processConfirmedPayment(
+    ventaId: number,
+    normalized: NormalizedPayment,
+    authenticatedUser: AuthenticatedUser,
+    expectedChannel: CanalVenta,
+  ) {
     try {
       return await this.prisma.$transaction(async (transaction) => {
         const sale = await this.ventasService.lockPendingForPayment(
           transaction,
           ventaId,
         );
-        if (sale.canal !== CanalVenta.PRESENCIAL) {
+        if (sale.canal !== expectedChannel) {
           throw new ConflictException(
-            'El pago en caja solo está disponible para ventas presenciales.',
+            expectedChannel === CanalVenta.PRESENCIAL
+              ? 'El pago en caja solo está disponible para ventas presenciales.'
+              : 'El pago electrónico solo está disponible para ventas digitales.',
           );
         }
-        const actor = await this.ventasService.authorizeCashierForBranch(
-          transaction,
-          authenticatedUser,
-          sale.sucursalId,
-        );
+
+        let actor: { id: number };
+        let reconciliation: CarritoPagoReconciliation | null = null;
+        if (expectedChannel === CanalVenta.PRESENCIAL) {
+          actor = await this.ventasService.authorizeCashierForBranch(
+            transaction,
+            authenticatedUser,
+            sale.sucursalId,
+          );
+        } else {
+          actor = await this.ventasService.authorizeDigitalBuyerForSale(
+            transaction,
+            authenticatedUser,
+            sale,
+          );
+          reconciliation =
+            await this.carritoService.preparePaidSaleReconciliation(
+              transaction,
+              actor.id,
+              sale.fecha,
+              sale.detalles,
+            );
+        }
         const amounts = this.calculateAmounts(normalized, sale.total);
 
         await this.movimientosService.registerSaleOutputs(
@@ -88,6 +151,12 @@ export class PagosService {
           transaction,
           sale.id,
         );
+        if (reconciliation) {
+          await this.carritoService.applyPaidSaleReconciliation(
+            transaction,
+            reconciliation,
+          );
+        }
 
         return {
           pago: this.mapPayment(payment),
@@ -108,7 +177,9 @@ export class PagosService {
     }
   }
 
-  private normalizePayment(input: ProcessCashPaymentDto): NormalizedPayment {
+  private normalizeCashierPayment(
+    input: ProcessCashPaymentDto,
+  ): NormalizedPayment {
     const referencia = input.referencia?.trim() || null;
     switch (input.metodo) {
       case MetodoPago.EFECTIVO:
@@ -138,6 +209,24 @@ export class PagosService {
       default:
         throw new BadRequestException('El método de pago no es válido.');
     }
+  }
+
+  private normalizeElectronicPayment(
+    input: ProcessElectronicPaymentDto,
+  ): NormalizedPayment {
+    if (
+      input.metodo !== MetodoPago.TARJETA &&
+      input.metodo !== MetodoPago.QR
+    ) {
+      throw new BadRequestException(
+        'El pago electrónico solo admite TARJETA o QR.',
+      );
+    }
+    return {
+      metodo: input.metodo,
+      montoRecibido: null,
+      referencia: `SIM-${input.metodo}-${randomUUID()}`,
+    };
   }
 
   private calculateAmounts(payment: NormalizedPayment, total: Prisma.Decimal) {

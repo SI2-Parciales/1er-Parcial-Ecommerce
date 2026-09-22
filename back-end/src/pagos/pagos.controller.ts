@@ -18,6 +18,7 @@ import type { AuthenticatedUser } from '../auth/guards/jwt-auth.guard.js';
 import {
   ProcessCashPaymentDto,
   ProcessCashPaymentResponseDto,
+  ProcessElectronicPaymentDto,
 } from './pagos.dto.js';
 import { PagosService } from './pagos.service.js';
 
@@ -27,7 +28,7 @@ import { PagosService } from './pagos.service.js';
   description: 'Falta un token válido, expiró o la cuenta está inactiva.',
 })
 @ApiForbiddenResponse({
-  description: 'El actor no puede procesar pagos de la sucursal de la venta.',
+  description: 'El actor no está autorizado para procesar el pago.',
 })
 @Controller('ventas/:ventaId/pagos')
 export class PagosController {
@@ -55,5 +56,29 @@ export class PagosController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.pagosService.processCashierPayment(ventaId, input, user);
+  }
+
+  @Post('electronico')
+  @MinRole(ACTOR_ROLE.CLIENTE)
+  @ApiOperation({ summary: 'Confirmar un pago electrónico simulado' })
+  @ApiParam({ name: 'ventaId', example: 20 })
+  @ApiCreatedResponse({
+    description: 'Pago confirmado, venta pagada e inventario actualizado.',
+    type: ProcessCashPaymentResponseDto,
+  })
+  @ApiBadRequestResponse({
+    description: 'El método de pago electrónico no es válido.',
+  })
+  @ApiNotFoundResponse({ description: 'No existe la venta solicitada.' })
+  @ApiConflictResponse({
+    description:
+      'La venta no está pendiente, no es digital o no hay existencias suficientes.',
+  })
+  processElectronicPayment(
+    @Param('ventaId', ParseIntPipe) ventaId: number,
+    @Body() input: ProcessElectronicPaymentDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.pagosService.processElectronicPayment(ventaId, input, user);
   }
 }

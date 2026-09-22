@@ -23,6 +23,7 @@ const MAX_POSTGRES_INTEGER = 2_147_483_647;
 interface LockedCartRow {
   id: number;
   sucursalId: number | null;
+  actualizadoEn: Date;
 }
 
 interface LockedBranchRow {
@@ -39,6 +40,12 @@ export interface CarritoCheckout {
     varianteProductoId: number;
     cantidad: number;
   }>;
+}
+
+export interface CarritoPagoReconciliation {
+  carritoId: number | null;
+  eliminarDetalleIds: number[];
+  actualizarDetalles: Array<{ id: number; cantidad: number }>;
 }
 
 const cartSelect = {
@@ -125,6 +132,84 @@ export class CarritoService {
     }
     for (const detail of details) this.assertQuantity(detail.cantidad);
     return { id: cart.id, sucursalId: branchId, detalles: details };
+  }
+
+  async preparePaidSaleReconciliation(
+    transaction: Prisma.TransactionClient,
+    userId: number,
+    saleDate: Date,
+    purchased: Array<{ varianteProductoId: number; cantidad: number }>,
+  ): Promise<CarritoPagoReconciliation> {
+    const cart = await this.lockExistingCart(transaction, userId);
+    const emptyPlan: CarritoPagoReconciliation = {
+      carritoId: cart?.id ?? null,
+      eliminarDetalleIds: [],
+      actualizarDetalles: [],
+    };
+    if (!cart || cart.actualizadoEn.getTime() >= saleDate.getTime()) {
+      return emptyPlan;
+    }
+
+    const purchasedByVariant = new Map(
+      purchased.map((detail) => [detail.varianteProductoId, detail.cantidad]),
+    );
+    const details = await transaction.detalleCarrito.findMany({
+      where: {
+        carritoId: cart.id,
+        varianteProductoId: { in: [...purchasedByVariant.keys()] },
+      },
+      orderBy: { varianteProductoId: 'asc' },
+      select: { id: true, varianteProductoId: true, cantidad: true },
+    });
+
+    for (const detail of details) {
+      const purchasedQuantity = purchasedByVariant.get(
+        detail.varianteProductoId,
+      );
+      if (
+        purchasedQuantity === undefined ||
+        detail.cantidad < purchasedQuantity
+      ) {
+        continue;
+      }
+      if (detail.cantidad === purchasedQuantity) {
+        emptyPlan.eliminarDetalleIds.push(detail.id);
+      } else {
+        emptyPlan.actualizarDetalles.push({
+          id: detail.id,
+          cantidad: detail.cantidad - purchasedQuantity,
+        });
+      }
+    }
+    return emptyPlan;
+  }
+
+  async applyPaidSaleReconciliation(
+    transaction: Prisma.TransactionClient,
+    plan: CarritoPagoReconciliation,
+  ): Promise<void> {
+    if (
+      plan.carritoId === null ||
+      (plan.eliminarDetalleIds.length === 0 &&
+        plan.actualizarDetalles.length === 0)
+    ) {
+      return;
+    }
+    if (plan.eliminarDetalleIds.length > 0) {
+      await transaction.detalleCarrito.deleteMany({
+        where: {
+          carritoId: plan.carritoId,
+          id: { in: plan.eliminarDetalleIds },
+        },
+      });
+    }
+    for (const detail of plan.actualizarDetalles) {
+      await transaction.detalleCarrito.update({
+        where: { id: detail.id },
+        data: { cantidad: detail.cantidad },
+      });
+    }
+    await this.touchCart(transaction, plan.carritoId);
   }
 
   async selectBranch(
@@ -329,7 +414,8 @@ export class CarritoService {
     const rows = await transaction.$queryRaw<LockedCartRow[]>`
       SELECT
         "id" AS "id",
-        "sucursal_id" AS "sucursalId"
+        "sucursal_id" AS "sucursalId",
+        "actualizado_en" AS "actualizadoEn"
       FROM "carritos"
       WHERE "usuario_id" = ${userId}
       FOR UPDATE
