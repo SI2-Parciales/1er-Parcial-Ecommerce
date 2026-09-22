@@ -4,8 +4,10 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { CanalVenta, EstadoVenta, Prisma } from '@prisma/client';
+import { createHash } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuthenticatedUser } from '../auth/guards/jwt-auth.guard.js';
+import { CarritoService } from '../carrito/carrito.service.js';
 import { InventarioService } from '../inventario/inventario.service.js';
 import {
   VarianteCompra,
@@ -24,6 +26,7 @@ describe('VentasService', () => {
     $transaction: vi.fn(async (callback: (tx: typeof transaction) => unknown) =>
       callback(transaction),
     ),
+    venta: { findFirst: vi.fn() },
   };
   const variantesService = {
     resolveActiveForPurchase: vi.fn(),
@@ -34,11 +37,20 @@ describe('VentasService', () => {
     applyTransfer: vi.fn(),
     applyShrinkage: vi.fn(),
   };
+  const carritoService = {
+    lockForCheckout: vi.fn(),
+  };
   const user: AuthenticatedUser = {
     id: 7,
     email: 'cajero@example.test',
     nombre: 'Caja',
     role: 'CAJERO',
+  };
+  const customer: AuthenticatedUser = {
+    id: 30,
+    email: 'cliente@example.test',
+    nombre: 'Cliente',
+    role: 'CLIENTE',
   };
   const variants: VarianteCompra[] = [
     {
@@ -58,6 +70,47 @@ describe('VentasService', () => {
       color: { id: 6, nombre: 'Azul', codigoHex: '#0000FF' },
     },
   ];
+  const digitalSaleRecord = (hashSolicitud?: string) => ({
+    id: 40,
+    canal: CanalVenta.DIGITAL,
+    nombreFacturacion: 'Ana Pérez',
+    documentoFacturacion: '1234567',
+    fecha: new Date('2026-09-22T13:00:00.000Z'),
+    total: new Prisma.Decimal('339.80'),
+    estado: EstadoVenta.PENDIENTE_PAGO,
+    sucursal: { id: 2, nombre: 'Sucursal Central' },
+    cajero: null,
+    cliente: { id: 30, nombre: 'Ana', apellido: 'Pérez' },
+    detalles: [
+      {
+        id: 10,
+        cantidad: 2,
+        precioUnitario: variants[0].precio,
+        subtotal: variants[0].precio.mul(2),
+        varianteProducto: {
+          id: variants[0].id,
+          sku: variants[0].sku,
+          producto: variants[0].producto,
+          talla: variants[0].talla,
+          color: variants[0].color,
+        },
+      },
+      {
+        id: 11,
+        cantidad: 1,
+        precioUnitario: variants[1].precio,
+        subtotal: variants[1].precio,
+        varianteProducto: {
+          id: variants[1].id,
+          sku: variants[1].sku,
+          producto: variants[1].producto,
+          talla: variants[1].talla,
+          color: variants[1].color,
+        },
+      },
+    ],
+    ...(hashSolicitud === undefined ? {} : { hashSolicitud }),
+  });
   let service: VentasService;
 
   beforeEach(() => {
@@ -66,7 +119,9 @@ describe('VentasService', () => {
       prisma as unknown as PrismaService,
       variantesService as unknown as VariantesService,
       inventarioService as unknown as InventarioService,
+      carritoService as unknown as CarritoService,
     );
+    prisma.venta.findFirst.mockResolvedValue(null);
     transaction.$queryRaw
       .mockResolvedValueOnce([
         {
@@ -83,6 +138,14 @@ describe('VentasService', () => {
       ]);
     variantesService.resolveActiveForPurchase.mockResolvedValue(variants);
     inventarioService.ensureAvailability.mockResolvedValue(undefined);
+    carritoService.lockForCheckout.mockResolvedValue({
+      id: 5,
+      sucursalId: 2,
+      detalles: [
+        { varianteProductoId: 11, cantidad: 2 },
+        { varianteProductoId: 12, cantidad: 1 },
+      ],
+    });
   });
 
   it('registra una venta múltiple, agrupa ID/SKU y usa facturación genérica', async () => {
@@ -289,6 +352,207 @@ describe('VentasService', () => {
       service.createPresencial(
         { detalles: [{ varianteProductoId: 11, cantidad: 2 }] },
         user,
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(transaction.venta.create).not.toHaveBeenCalled();
+  });
+
+  it('crea una venta digital desde el carrito con precios históricos', async () => {
+    const key = '7ad63e0d-91ad-4fd7-a422-b14d76875c27';
+    transaction.$queryRaw
+      .mockReset()
+      .mockResolvedValueOnce([{ id: 30, estado: 'ACTIVO', role: 'CLIENTE' }])
+      .mockResolvedValueOnce([
+        { id: 2, nombre: 'Sucursal Central', estado: 'ACTIVO' },
+      ]);
+    transaction.venta.create.mockResolvedValue(digitalSaleRecord());
+
+    const result = await service.createDigital(
+      {
+        nombreFacturacion: ' Ana Pérez ',
+        documentoFacturacion: ' 1234567 ',
+      },
+      customer,
+      key,
+    );
+
+    expect(carritoService.lockForCheckout).toHaveBeenCalledWith(
+      transaction,
+      30,
+    );
+    expect(inventarioService.ensureAvailability).toHaveBeenCalledWith(
+      transaction,
+      2,
+      [
+        { varianteProductoId: 11, cantidad: 2 },
+        { varianteProductoId: 12, cantidad: 1 },
+      ],
+    );
+    expect(transaction.venta.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          canal: CanalVenta.DIGITAL,
+          sucursalId: 2,
+          cajeroId: null,
+          clienteId: 30,
+          nombreFacturacion: 'Ana Pérez',
+          documentoFacturacion: '1234567',
+          total: new Prisma.Decimal('339.80'),
+          claveIdempotencia: key,
+          hashSolicitud: expect.stringMatching(/^[a-f0-9]{64}$/),
+          detalles: {
+            create: [
+              expect.objectContaining({
+                varianteProductoId: 11,
+                cantidad: 2,
+                precioUnitario: new Prisma.Decimal('129.90'),
+                subtotal: new Prisma.Decimal('259.80'),
+              }),
+              expect.objectContaining({
+                varianteProductoId: 12,
+                cantidad: 1,
+                precioUnitario: new Prisma.Decimal('80.00'),
+                subtotal: new Prisma.Decimal('80.00'),
+              }),
+            ],
+          },
+        }),
+      }),
+    );
+    expect(result).toMatchObject({
+      id: 40,
+      canal: 'DIGITAL',
+      cajero: null,
+      cliente: { id: 30 },
+      estado: 'PENDIENTE_PAGO',
+      total: 339.8,
+    });
+  });
+
+  it('devuelve la misma venta al repetir una clave con igual facturación', async () => {
+    const key = '7ad63e0d-91ad-4fd7-a422-b14d76875c27';
+    const requestHash = createHash('sha256')
+      .update(
+        JSON.stringify({
+          clientId: 30,
+          nombre: 'Ana Pérez',
+          documento: '1234567',
+        }),
+      )
+      .digest('hex');
+    prisma.venta.findFirst.mockResolvedValue(digitalSaleRecord(requestHash));
+
+    const result = await service.createDigital(
+      {
+        nombreFacturacion: 'Ana Pérez',
+        documentoFacturacion: '1234567',
+      },
+      customer,
+      key,
+    );
+
+    expect(result).toMatchObject({ id: 40, canal: 'DIGITAL' });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(transaction.venta.create).not.toHaveBeenCalled();
+  });
+
+  it('rechaza una clave reutilizada con otra facturación', async () => {
+    const key = '7ad63e0d-91ad-4fd7-a422-b14d76875c27';
+    prisma.venta.findFirst.mockResolvedValue(digitalSaleRecord('0'.repeat(64)));
+
+    await expect(
+      service.createDigital(
+        {
+          nombreFacturacion: 'Ana Pérez',
+          documentoFacturacion: '1234567',
+        },
+        customer,
+        key,
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('recupera la venta creada por una confirmación concurrente equivalente', async () => {
+    const key = '7ad63e0d-91ad-4fd7-a422-b14d76875c27';
+    const requestHash = createHash('sha256')
+      .update(
+        JSON.stringify({
+          clientId: 30,
+          nombre: 'Ana Pérez',
+          documento: '1234567',
+        }),
+      )
+      .digest('hex');
+    prisma.venta.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(digitalSaleRecord(requestHash));
+    prisma.$transaction.mockRejectedValueOnce({ code: 'P2002' });
+
+    await expect(
+      service.createDigital(
+        {
+          nombreFacturacion: 'Ana Pérez',
+          documentoFacturacion: '1234567',
+        },
+        customer,
+        key,
+      ),
+    ).resolves.toMatchObject({ id: 40, canal: 'DIGITAL' });
+    expect(prisma.venta.findFirst).toHaveBeenCalledTimes(2);
+  });
+
+  it('rechaza facturación o clave inválida antes de leer el carrito', async () => {
+    await expect(
+      service.createDigital(
+        { nombreFacturacion: '', documentoFacturacion: '1234567' },
+        customer,
+        '7ad63e0d-91ad-4fd7-a422-b14d76875c27',
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      service.createDigital(
+        {
+          nombreFacturacion: 'Ana Pérez',
+          documentoFacturacion: '1234567',
+        },
+        customer,
+        'no-es-uuid',
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(carritoService.lockForCheckout).not.toHaveBeenCalled();
+  });
+
+  it('rechaza actores no clientes y propaga conflictos del carrito o stock', async () => {
+    const key = '7ad63e0d-91ad-4fd7-a422-b14d76875c27';
+    transaction.$queryRaw
+      .mockReset()
+      .mockResolvedValueOnce([{ id: 7, estado: 'ACTIVO', role: 'CAJERO' }]);
+    await expect(
+      service.createDigital(
+        {
+          nombreFacturacion: 'Ana Pérez',
+          documentoFacturacion: '1234567',
+        },
+        user,
+        key,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    transaction.$queryRaw
+      .mockReset()
+      .mockResolvedValueOnce([{ id: 30, estado: 'ACTIVO', role: 'CLIENTE' }]);
+    carritoService.lockForCheckout.mockRejectedValueOnce(
+      new ConflictException('El carrito está vacío.'),
+    );
+    await expect(
+      service.createDigital(
+        {
+          nombreFacturacion: 'Ana Pérez',
+          documentoFacturacion: '1234567',
+        },
+        customer,
+        key,
       ),
     ).rejects.toBeInstanceOf(ConflictException);
     expect(transaction.venta.create).not.toHaveBeenCalled();

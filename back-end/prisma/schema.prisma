@@ -212,6 +212,8 @@ model Venta {
   fecha                 DateTime               @default(now())
   total                 Decimal                @db.Decimal(14, 2)
   estado                EstadoVenta            @default(PENDIENTE_PAGO)
+  claveIdempotencia     String?                @map("clave_idempotencia") @db.Uuid
+  hashSolicitud         String?                @map("hash_solicitud") @db.Char(64)
   sucursal              Sucursal               @relation(fields: [sucursalId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   cajero                Usuario?               @relation("VentaCajero", fields: [cajeroId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   cliente               Usuario?               @relation("VentaCliente", fields: [clienteId], references: [id], onDelete: Restrict, onUpdate: Cascade)

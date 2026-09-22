@@ -7,8 +7,11 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { CanalVenta, EstadoVenta, Prisma } from '@prisma/client';
+import { isUUID } from 'class-validator';
+import { createHash } from 'node:crypto';
 import { ACTOR_ROLE, ActorRole, ROLE_LEVEL } from '../auth/auth.constants.js';
 import type { AuthenticatedUser } from '../auth/guards/jwt-auth.guard.js';
+import { CarritoService } from '../carrito/carrito.service.js';
 import { InventarioService } from '../inventario/inventario.service.js';
 import {
   VarianteCompra,
@@ -17,6 +20,7 @@ import {
 import { normalizeSku } from '../productos/productos.utils.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
+  CreateVentaDigitalDto,
   CreateVentaDetalleDto,
   CreateVentaPresencialDto,
 } from './ventas.dto.js';
@@ -104,12 +108,22 @@ const ventaSelect = {
 
 type VentaRecord = Prisma.VentaGetPayload<{ select: typeof ventaSelect }>;
 
+const idempotentVentaSelect = {
+  ...ventaSelect,
+  hashSolicitud: true,
+} satisfies Prisma.VentaSelect;
+
+type IdempotentVentaRecord = Prisma.VentaGetPayload<{
+  select: typeof idempotentVentaSelect;
+}>;
+
 @Injectable()
 export class VentasService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly variantesService: VariantesService,
     private readonly inventarioService: InventarioService,
+    private readonly carritoService: CarritoService,
   ) {}
 
   async createPresencial(
@@ -142,27 +156,7 @@ export class VentasService {
         })),
       );
 
-      let total = new Prisma.Decimal(0);
-      const details = lines.map((line) => {
-        const subtotal = line.variante.precio.mul(line.cantidad);
-        if (subtotal.greaterThan(MAX_SALE_AMOUNT)) {
-          throw new BadRequestException(
-            'El subtotal de una variante supera el importe máximo admitido.',
-          );
-        }
-        total = total.plus(subtotal);
-        return {
-          varianteProductoId: line.variante.id,
-          cantidad: line.cantidad,
-          precioUnitario: line.variante.precio,
-          subtotal,
-        };
-      });
-      if (total.greaterThan(MAX_SALE_AMOUNT)) {
-        throw new BadRequestException(
-          'El total de la venta supera el importe máximo admitido.',
-        );
-      }
+      const { details, total } = this.calculateAmounts(lines);
 
       const sale = await transaction.venta.create({
         data: {
@@ -179,6 +173,88 @@ export class VentasService {
       });
       return this.mapSale(sale);
     });
+  }
+
+  async createDigital(
+    input: CreateVentaDigitalDto,
+    authenticatedUser: AuthenticatedUser,
+    idempotencyKey: string | undefined,
+  ) {
+    if (authenticatedUser.role !== ACTOR_ROLE.CLIENTE) {
+      throw new ForbiddenException(
+        'Solo los clientes pueden confirmar compras digitales.',
+      );
+    }
+    if (!idempotencyKey || !isUUID(idempotencyKey, '4')) {
+      throw new BadRequestException(
+        'El encabezado Idempotency-Key debe contener un UUID v4 válido.',
+      );
+    }
+    const billing = this.normalizeDigitalBilling(input);
+    const requestHash = this.hashDigitalRequest(authenticatedUser.id, billing);
+    const previous = await this.findIdempotentSale(
+      authenticatedUser.id,
+      idempotencyKey,
+    );
+    if (previous) {
+      return this.resolveIdempotentSale(previous, requestHash);
+    }
+
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        const client = await this.authorizeDigitalClient(
+          transaction,
+          authenticatedUser.id,
+        );
+        const cart = await this.carritoService.lockForCheckout(
+          transaction,
+          client.id,
+        );
+        const branch = await this.lockActiveBranch(
+          transaction,
+          cart.sucursalId,
+        );
+        this.validateReferences(cart.detalles);
+        const variants = await this.variantesService.resolveActiveForPurchase(
+          transaction,
+          cart.detalles,
+        );
+        const lines = this.aggregateLines(cart.detalles, variants);
+        await this.inventarioService.ensureAvailability(
+          transaction,
+          branch.id,
+          lines.map((line) => ({
+            varianteProductoId: line.variante.id,
+            cantidad: line.cantidad,
+          })),
+        );
+        const { details, total } = this.calculateAmounts(lines);
+        const sale = await transaction.venta.create({
+          data: {
+            canal: CanalVenta.DIGITAL,
+            sucursalId: branch.id,
+            cajeroId: null,
+            clienteId: client.id,
+            nombreFacturacion: billing.nombre,
+            documentoFacturacion: billing.documento,
+            total,
+            claveIdempotencia: idempotencyKey,
+            hashSolicitud: requestHash,
+            detalles: { create: details },
+          },
+          select: ventaSelect,
+        });
+        return this.mapSale(sale);
+      });
+    } catch (error: unknown) {
+      if (!this.isPrismaError(error, 'P2002')) throw error;
+      const concurrent = await this.findIdempotentSale(
+        authenticatedUser.id,
+        idempotencyKey,
+      );
+      if (!concurrent) throw error;
+      return this.resolveIdempotentSale(concurrent, requestHash);
+    }
   }
 
   async lockPendingForPayment(
@@ -266,6 +342,17 @@ export class VentasService {
     return { nombre, documento };
   }
 
+  private normalizeDigitalBilling(input: CreateVentaDigitalDto) {
+    const nombre = input.nombreFacturacion?.trim();
+    const documento = input.documentoFacturacion?.trim();
+    if (!nombre || !documento) {
+      throw new BadRequestException(
+        'El nombre y el documento de facturación son obligatorios.',
+      );
+    }
+    return { nombre, documento };
+  }
+
   private validateReferences(details: CreateVentaDetalleDto[]): void {
     if (!Array.isArray(details) || details.length === 0) {
       throw new BadRequestException(
@@ -316,6 +403,22 @@ export class VentasService {
     return actor;
   }
 
+  private async authorizeDigitalClient(
+    transaction: Prisma.TransactionClient,
+    userId: number,
+  ): Promise<LockedClientRow> {
+    const client = await this.lockClientRecord(transaction, userId);
+    if (!client || client.estado !== 'ACTIVO') {
+      throw new UnauthorizedException('La cuenta no está disponible.');
+    }
+    if (client.role !== ACTOR_ROLE.CLIENTE) {
+      throw new ForbiddenException(
+        'Solo los clientes pueden confirmar compras digitales.',
+      );
+    }
+    return client;
+  }
+
   private authorizeActor(actor: CurrentActorRow): void {
     const actorLevel = ROLE_LEVEL[actor.role as ActorRole];
     if (!actorLevel || actorLevel < ROLE_LEVEL[ACTOR_ROLE.CAJERO]) {
@@ -359,14 +462,7 @@ export class VentasService {
     clientId: number | undefined,
   ): Promise<void> {
     if (clientId === undefined) return;
-    const rows = await transaction.$queryRaw<LockedClientRow[]>`
-      SELECT u."id", u."estado", r."nombre" AS "role"
-      FROM "usuarios" AS u
-      INNER JOIN "roles" AS r ON r."id" = u."rol_id"
-      WHERE u."id" = ${clientId}
-      FOR SHARE OF u
-    `;
-    const client = rows[0];
+    const client = await this.lockClientRecord(transaction, clientId);
     if (!client) {
       throw new NotFoundException('No se encontró el cliente solicitado.');
     }
@@ -375,6 +471,20 @@ export class VentasService {
         'El comprador registrado debe ser un cliente activo.',
       );
     }
+  }
+
+  private async lockClientRecord(
+    transaction: Prisma.TransactionClient,
+    clientId: number,
+  ): Promise<LockedClientRow | undefined> {
+    const rows = await transaction.$queryRaw<LockedClientRow[]>`
+      SELECT u."id", u."estado", r."nombre" AS "role"
+      FROM "usuarios" AS u
+      INNER JOIN "roles" AS r ON r."id" = u."rol_id"
+      WHERE u."id" = ${clientId}
+      FOR SHARE OF u
+    `;
+    return rows[0];
   }
 
   private aggregateLines(
@@ -407,6 +517,73 @@ export class VentasService {
 
     return [...aggregated.values()].sort(
       (left, right) => left.variante.id - right.variante.id,
+    );
+  }
+
+  private calculateAmounts(lines: AggregatedSaleLine[]) {
+    let total = new Prisma.Decimal(0);
+    const details = lines.map((line) => {
+      const subtotal = line.variante.precio.mul(line.cantidad);
+      if (subtotal.greaterThan(MAX_SALE_AMOUNT)) {
+        throw new BadRequestException(
+          'El subtotal de una variante supera el importe máximo admitido.',
+        );
+      }
+      total = total.plus(subtotal);
+      return {
+        varianteProductoId: line.variante.id,
+        cantidad: line.cantidad,
+        precioUnitario: line.variante.precio,
+        subtotal,
+      };
+    });
+    if (total.greaterThan(MAX_SALE_AMOUNT)) {
+      throw new BadRequestException(
+        'El total de la venta supera el importe máximo admitido.',
+      );
+    }
+    return { details, total };
+  }
+
+  private hashDigitalRequest(
+    clientId: number,
+    billing: { nombre: string; documento: string },
+  ): string {
+    return createHash('sha256')
+      .update(JSON.stringify({ clientId, ...billing }))
+      .digest('hex');
+  }
+
+  private findIdempotentSale(clientId: number, idempotencyKey: string) {
+    return this.prisma.venta.findFirst({
+      where: {
+        canal: CanalVenta.DIGITAL,
+        clienteId: clientId,
+        claveIdempotencia: idempotencyKey,
+      },
+      select: idempotentVentaSelect,
+    });
+  }
+
+  private resolveIdempotentSale(
+    previous: IdempotentVentaRecord,
+    requestHash: string,
+  ) {
+    if (previous.hashSolicitud !== requestHash) {
+      throw new ConflictException(
+        'La clave de idempotencia ya fue utilizada con otra solicitud.',
+      );
+    }
+    const { hashSolicitud: _hashSolicitud, ...sale } = previous;
+    return this.mapSale(sale);
+  }
+
+  private isPrismaError(error: unknown, code: string): boolean {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      error.code === code
     );
   }
 

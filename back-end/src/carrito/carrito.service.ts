@@ -32,6 +32,15 @@ interface LockedBranchRow {
   estado: string;
 }
 
+export interface CarritoCheckout {
+  id: number;
+  sucursalId: number;
+  detalles: Array<{
+    varianteProductoId: number;
+    cantidad: number;
+  }>;
+}
+
 const cartSelect = {
   id: true,
   creadoEn: true,
@@ -93,6 +102,29 @@ export class CarritoService {
       );
       return this.buildResponse(transaction, cart.id);
     });
+  }
+
+  async lockForCheckout(
+    transaction: Prisma.TransactionClient,
+    userId: number,
+  ): Promise<CarritoCheckout> {
+    const cart = await this.lockExistingCart(transaction, userId);
+    if (!cart) {
+      throw new ConflictException(
+        'El cliente no tiene un carrito para comprar.',
+      );
+    }
+    const branchId = this.requireSelectedBranch(cart);
+    const details = await transaction.detalleCarrito.findMany({
+      where: { carritoId: cart.id },
+      orderBy: { varianteProductoId: 'asc' },
+      select: { varianteProductoId: true, cantidad: true },
+    });
+    if (details.length === 0) {
+      throw new ConflictException('El carrito está vacío.');
+    }
+    for (const detail of details) this.assertQuantity(detail.cantidad);
+    return { id: cart.id, sucursalId: branchId, detalles: details };
   }
 
   async selectBranch(

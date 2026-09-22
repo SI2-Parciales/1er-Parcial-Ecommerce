@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { CanalVenta, EstadoVenta } from '@prisma/client';
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayNotEmpty,
@@ -80,6 +81,26 @@ export class CreateVentaPresencialDto {
   detalles!: CreateVentaDetalleDto[];
 }
 
+export class CreateVentaDigitalDto {
+  @ApiProperty({ example: 'María López', maxLength: 200 })
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  nombreFacturacion!: string;
+
+  @ApiProperty({ example: '1234567', maxLength: 50 })
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(50)
+  documentoFacturacion!: string;
+}
+
 export class VentaPersonaResumenDto {
   @ApiProperty({ example: 1 })
   id!: number;
@@ -158,8 +179,8 @@ export class VentaResponseDto {
   @ApiProperty({ example: 1 })
   id!: number;
 
-  @ApiProperty({ enum: ['PRESENCIAL'] })
-  canal!: string;
+  @ApiProperty({ enum: CanalVenta })
+  canal!: CanalVenta;
 
   @ApiProperty({ type: VentaSucursalResumenDto })
   sucursal!: VentaSucursalResumenDto;
@@ -182,8 +203,8 @@ export class VentaResponseDto {
   @ApiProperty({ example: 259.8, type: Number })
   total!: number;
 
-  @ApiProperty({ enum: ['PENDIENTE_PAGO'] })
-  estado!: string;
+  @ApiProperty({ enum: EstadoVenta })
+  estado!: EstadoVenta;
 
   @ApiProperty({ type: [VentaDetalleResponseDto] })
   detalles!: VentaDetalleResponseDto[];

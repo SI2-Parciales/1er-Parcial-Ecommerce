@@ -1,10 +1,11 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Headers, Post } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
+  ApiHeader,
   ApiNotFoundResponse,
   ApiOperation,
   ApiTags,
@@ -14,7 +15,11 @@ import { ACTOR_ROLE } from '../auth/auth.constants.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import { MinRole } from '../auth/decorators/min-role.decorator.js';
 import type { AuthenticatedUser } from '../auth/guards/jwt-auth.guard.js';
-import { CreateVentaPresencialDto, VentaResponseDto } from './ventas.dto.js';
+import {
+  CreateVentaDigitalDto,
+  CreateVentaPresencialDto,
+  VentaResponseDto,
+} from './ventas.dto.js';
 import { VentasService } from './ventas.service.js';
 
 @ApiTags('Ventas')
@@ -56,5 +61,40 @@ export class VentasController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.ventasService.createPresencial(input, user);
+  }
+
+  @Post('digitales')
+  @MinRole(ACTOR_ROLE.CLIENTE)
+  @ApiOperation({
+    summary: 'Crear una venta digital pendiente de pago desde el carrito',
+    description:
+      'Revalida catálogo, precios y existencias sin modificar el carrito ni el inventario.',
+  })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: true,
+    schema: { type: 'string', format: 'uuid' },
+    description: 'UUID v4 único para esta confirmación de compra.',
+  })
+  @ApiCreatedResponse({
+    description: 'Venta digital registrada y preparada para el pago.',
+    type: VentaResponseDto,
+  })
+  @ApiBadRequestResponse({
+    description: 'La facturación o la clave de idempotencia no son válidas.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Una variante del carrito ya no existe.',
+  })
+  @ApiConflictResponse({
+    description:
+      'El carrito no puede confirmarse, algún recurso está inactivo, no hay stock o la clave fue reutilizada.',
+  })
+  createDigital(
+    @Body() input: CreateVentaDigitalDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+  ) {
+    return this.ventasService.createDigital(input, user, idempotencyKey);
   }
 }

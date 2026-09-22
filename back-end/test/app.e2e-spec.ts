@@ -2705,6 +2705,303 @@ describeWithDatabase('AppController (e2e)', () => {
     expect(await prisma.movimientoInventario.count()).toBe(0);
   }, 30_000);
 
+  it('crea compras digitales idempotentes sin modificar carrito ni inventario', async () => {
+    const passwordHash = await argon2.hash('unused-hash-value');
+    const clientRole = await prisma.rol.findUniqueOrThrow({
+      where: { nombre: 'CLIENTE' },
+    });
+    const adminRole = await prisma.rol.findUniqueOrThrow({
+      where: { nombre: 'ADMINISTRADOR' },
+    });
+    const createCustomer = (email: string, telefono: string) =>
+      prisma.usuario.create({
+        data: {
+          nombre: 'Cliente',
+          apellido: 'Digital',
+          telefono,
+          email,
+          passwordHash,
+          estado: 'ACTIVO',
+          rolId: clientRole.id,
+        },
+      });
+    const [customer, concurrentCustomer, failingCustomer, emptyCustomer] =
+      await Promise.all([
+        createCustomer('compra-digital@example.test', '71110001'),
+        createCustomer('compra-concurrente@example.test', '71110002'),
+        createCustomer('compra-sin-stock@example.test', '71110003'),
+        createCustomer('compra-vacia@example.test', '71110004'),
+      ]);
+    const administrator = await prisma.usuario.create({
+      data: {
+        nombre: 'Admin',
+        apellido: 'Digital',
+        telefono: '71110005',
+        email: 'admin-compra-digital@example.test',
+        passwordHash,
+        estado: 'ACTIVO',
+        rolId: adminRole.id,
+      },
+    });
+    const branch = await prisma.sucursal.create({
+      data: { nombre: 'Sucursal Compra Digital', ubicacion: 'Centro' },
+    });
+    const category = await prisma.categoria.create({
+      data: { nombre: 'Categoría Compra Digital' },
+    });
+    const size = await prisma.talla.create({
+      data: { nombre: 'M Compra Digital' },
+    });
+    const firstColor = await prisma.color.create({
+      data: { nombre: 'Negro Compra Digital', codigoHex: '#111111' },
+    });
+    const secondColor = await prisma.color.create({
+      data: { nombre: 'Azul Compra Digital', codigoHex: '#1111AA' },
+    });
+    const firstProduct = await prisma.producto.create({
+      data: {
+        nombre: 'Chaqueta Digital',
+        precio: 100.25,
+        categoriaId: category.id,
+      },
+    });
+    const secondProduct = await prisma.producto.create({
+      data: {
+        nombre: 'Polera Digital',
+        precio: 20.1,
+        categoriaId: category.id,
+      },
+    });
+    const firstVariant = await prisma.varianteProducto.create({
+      data: {
+        productoId: firstProduct.id,
+        tallaId: size.id,
+        colorId: firstColor.id,
+        sku: 'CHAQ-DIGITAL-M',
+      },
+    });
+    const secondVariant = await prisma.varianteProducto.create({
+      data: {
+        productoId: secondProduct.id,
+        tallaId: size.id,
+        colorId: secondColor.id,
+        sku: 'POL-DIGITAL-M',
+      },
+    });
+    await prisma.inventario.createMany({
+      data: [
+        {
+          sucursalId: branch.id,
+          varianteProductoId: firstVariant.id,
+          cantidadFisica: 10,
+          cantidadReservada: 1,
+          cantidadNoDisponible: 1,
+        },
+        {
+          sucursalId: branch.id,
+          varianteProductoId: secondVariant.id,
+          cantidadFisica: 5,
+          cantidadReservada: 0,
+          cantidadNoDisponible: 0,
+        },
+      ],
+    });
+    const cart = await prisma.carrito.create({
+      data: {
+        usuarioId: customer.id,
+        sucursalId: branch.id,
+        detalles: {
+          create: [
+            { varianteProductoId: firstVariant.id, cantidad: 2 },
+            { varianteProductoId: secondVariant.id, cantidad: 1 },
+          ],
+        },
+      },
+      include: { detalles: true },
+    });
+    await prisma.carrito.create({
+      data: {
+        usuarioId: concurrentCustomer.id,
+        sucursalId: branch.id,
+        detalles: {
+          create: { varianteProductoId: firstVariant.id, cantidad: 1 },
+        },
+      },
+    });
+    await prisma.carrito.create({
+      data: { usuarioId: emptyCustomer.id, sucursalId: branch.id },
+    });
+    await prisma.carrito.create({
+      data: {
+        usuarioId: failingCustomer.id,
+        sucursalId: branch.id,
+        detalles: {
+          create: { varianteProductoId: secondVariant.id, cantidad: 6 },
+        },
+      },
+    });
+    const inventoriesBefore = await prisma.inventario.findMany({
+      orderBy: { id: 'asc' },
+    });
+    const jwtService = app.get(JwtService);
+    const tokenFor = (id: number, role: string) =>
+      jwtService.sign({ sub: id, role });
+    const customerToken = tokenFor(customer.id, 'CLIENTE');
+    const concurrentToken = tokenFor(concurrentCustomer.id, 'CLIENTE');
+    const failingToken = tokenFor(failingCustomer.id, 'CLIENTE');
+    const emptyToken = tokenFor(emptyCustomer.id, 'CLIENTE');
+    const adminToken = tokenFor(administrator.id, 'ADMINISTRADOR');
+    const checkoutBody = {
+      nombreFacturacion: 'Ana Digital',
+      documentoFacturacion: '9876543',
+    };
+    const key = randomUUID();
+
+    await request(app.getHttpServer())
+      .post('/ventas/digitales')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send(checkoutBody)
+      .expect(400);
+    await request(app.getHttpServer())
+      .post('/ventas/digitales')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .set('Idempotency-Key', randomUUID())
+      .send(checkoutBody)
+      .expect(403);
+    await request(app.getHttpServer())
+      .post('/ventas/digitales')
+      .set('Authorization', `Bearer ${emptyToken}`)
+      .set('Idempotency-Key', randomUUID())
+      .send(checkoutBody)
+      .expect(409);
+    await request(app.getHttpServer())
+      .post('/ventas/digitales')
+      .set('Authorization', `Bearer ${failingToken}`)
+      .set('Idempotency-Key', randomUUID())
+      .send(checkoutBody)
+      .expect(409);
+    expect(
+      await prisma.venta.count({ where: { clienteId: failingCustomer.id } }),
+    ).toBe(0);
+
+    const created = await request(app.getHttpServer())
+      .post('/ventas/digitales')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .set('Idempotency-Key', key)
+      .send(checkoutBody)
+      .expect(201);
+    expect(created.body).toMatchObject({
+      canal: 'DIGITAL',
+      sucursal: { id: branch.id },
+      cajero: null,
+      cliente: { id: customer.id },
+      nombreFacturacion: 'Ana Digital',
+      documentoFacturacion: '9876543',
+      total: 220.6,
+      estado: 'PENDIENTE_PAGO',
+      detalles: [
+        { cantidad: 2, precioUnitario: 100.25, subtotal: 200.5 },
+        { cantidad: 1, precioUnitario: 20.1, subtotal: 20.1 },
+      ],
+    });
+    const saleId = created.body.id as number;
+    const saved = await prisma.venta.findUniqueOrThrow({
+      where: { id: saleId },
+      include: { detalles: { orderBy: { id: 'asc' } } },
+    });
+    expect(saved).toMatchObject({
+      canal: 'DIGITAL',
+      clienteId: customer.id,
+      cajeroId: null,
+      sucursalId: branch.id,
+      estado: 'PENDIENTE_PAGO',
+      claveIdempotencia: key,
+    });
+    expect(
+      saved.detalles.map(({ precioUnitario }) => precioUnitario.toNumber()),
+    ).toEqual([100.25, 20.1]);
+    expect(
+      await prisma.carrito.findUniqueOrThrow({
+        where: { id: cart.id },
+        include: { detalles: { orderBy: { id: 'asc' } } },
+      }),
+    ).toMatchObject({
+      sucursalId: branch.id,
+      detalles: [
+        { varianteProductoId: firstVariant.id, cantidad: 2 },
+        { varianteProductoId: secondVariant.id, cantidad: 1 },
+      ],
+    });
+    expect(
+      await prisma.inventario.findMany({ orderBy: { id: 'asc' } }),
+    ).toEqual(inventoriesBefore);
+    expect(await prisma.movimientoInventario.count()).toBe(0);
+    expect(await prisma.pago.count()).toBe(0);
+
+    await request(app.getHttpServer())
+      .post('/ventas/digitales')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .set('Idempotency-Key', key)
+      .send(checkoutBody)
+      .expect(201)
+      .expect(({ body }) => expect(body.id).toBe(saleId));
+    expect(
+      await prisma.venta.count({
+        where: { clienteId: customer.id, canal: 'DIGITAL' },
+      }),
+    ).toBe(1);
+    await request(app.getHttpServer())
+      .post('/ventas/digitales')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .set('Idempotency-Key', key)
+      .send({ ...checkoutBody, documentoFacturacion: 'OTRO' })
+      .expect(409);
+
+    await prisma.producto.update({
+      where: { id: firstProduct.id },
+      data: { precio: 150 },
+    });
+    expect(
+      (
+        await prisma.detalleVenta.findFirstOrThrow({
+          where: { ventaId: saleId, varianteProductoId: firstVariant.id },
+        })
+      ).precioUnitario.toNumber(),
+    ).toBe(100.25);
+
+    const concurrentKey = randomUUID();
+    const concurrentResponses = await Promise.all([
+      request(app.getHttpServer())
+        .post('/ventas/digitales')
+        .set('Authorization', `Bearer ${concurrentToken}`)
+        .set('Idempotency-Key', concurrentKey)
+        .send(checkoutBody),
+      request(app.getHttpServer())
+        .post('/ventas/digitales')
+        .set('Authorization', `Bearer ${concurrentToken}`)
+        .set('Idempotency-Key', concurrentKey)
+        .send(checkoutBody),
+    ]);
+    expect(concurrentResponses.map(({ status }) => status)).toEqual([201, 201]);
+    expect(concurrentResponses[0].body.id).toBe(concurrentResponses[1].body.id);
+    expect(
+      await prisma.venta.count({
+        where: { clienteId: concurrentCustomer.id, canal: 'DIGITAL' },
+      }),
+    ).toBe(1);
+
+    await prisma.varianteProducto.update({
+      where: { id: secondVariant.id },
+      data: { estado: 'INACTIVO' },
+    });
+    await request(app.getHttpServer())
+      .post('/ventas/digitales')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .set('Idempotency-Key', randomUUID())
+      .send(checkoutBody)
+      .expect(409);
+  }, 30_000);
+
   it('migra usuarios VENDEDOR existentes a CAJERO conservando su relación', async () => {
     const legacyRole = await prisma.rol.upsert({
       where: { nombre: 'VENDEDOR' },

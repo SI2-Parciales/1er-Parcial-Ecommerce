@@ -22,6 +22,7 @@ describe('CarritoService', () => {
     detalleCarrito: {
       findUnique: vi.fn(),
       findFirst: vi.fn(),
+      findMany: vi.fn(),
       upsert: vi.fn(),
       update: vi.fn(),
       deleteMany: vi.fn(),
@@ -138,6 +139,46 @@ describe('CarritoService', () => {
     });
     expect(transaction.$executeRaw).toHaveBeenCalledOnce();
     expect(inventarioService.getAvailableQuantities).not.toHaveBeenCalled();
+  });
+
+  it('bloquea y entrega el contenido del carrito para checkout sin modificarlo', async () => {
+    transaction.$queryRaw.mockResolvedValue([{ id: 1, sucursalId: 3 }]);
+    transaction.detalleCarrito.findMany.mockResolvedValue([
+      { varianteProductoId: 12, cantidad: 2 },
+      { varianteProductoId: 14, cantidad: 1 },
+    ]);
+
+    await expect(
+      service.lockForCheckout(transaction as never, customer.id),
+    ).resolves.toEqual({
+      id: 1,
+      sucursalId: 3,
+      detalles: [
+        { varianteProductoId: 12, cantidad: 2 },
+        { varianteProductoId: 14, cantidad: 1 },
+      ],
+    });
+    expect(transaction.carrito.update).not.toHaveBeenCalled();
+    expect(transaction.detalleCarrito.update).not.toHaveBeenCalled();
+    expect(transaction.detalleCarrito.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('rechaza checkout de un carrito inexistente, sin sucursal o vacío', async () => {
+    transaction.$queryRaw.mockResolvedValueOnce([]);
+    await expect(
+      service.lockForCheckout(transaction as never, customer.id),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    transaction.$queryRaw.mockResolvedValueOnce([{ id: 1, sucursalId: null }]);
+    await expect(
+      service.lockForCheckout(transaction as never, customer.id),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    transaction.$queryRaw.mockResolvedValueOnce([{ id: 1, sucursalId: 3 }]);
+    transaction.detalleCarrito.findMany.mockResolvedValue([]);
+    await expect(
+      service.lockForCheckout(transaction as never, customer.id),
+    ).rejects.toBeInstanceOf(ConflictException);
   });
 
   it('selecciona una sucursal activa sin modificar los detalles', async () => {
