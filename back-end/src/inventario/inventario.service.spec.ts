@@ -620,4 +620,35 @@ describe('InventarioService', () => {
     ).rejects.toBeInstanceOf(ConflictException);
     expect(transaction.inventario.update).not.toHaveBeenCalled();
   });
+
+  it('valida disponibilidad local sin modificar el inventario', async () => {
+    transaction.$queryRaw.mockResolvedValue([
+      {
+        id: 30,
+        sucursalId: 2,
+        varianteProductoId: 8,
+        cantidadFisica: 10,
+        cantidadReservada: 2,
+        cantidadNoDisponible: 3,
+      },
+    ]);
+
+    await expect(
+      service.ensureAvailability(transaction as never, 2, [
+        { varianteProductoId: 8, cantidad: 5 },
+      ]),
+    ).resolves.toBeUndefined();
+    expect(transaction.inventario.update).not.toHaveBeenCalled();
+
+    await expect(
+      service.ensureAvailability(transaction as never, 2, [
+        { varianteProductoId: 8, cantidad: 6 },
+      ]),
+    ).rejects.toBeInstanceOf(ConflictException);
+    await expect(
+      service.ensureAvailability(transaction as never, 2, [
+        { varianteProductoId: 999, cantidad: 1 },
+      ]),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
 });

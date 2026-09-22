@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { VariantesService } from './variantes.service.js';
 
@@ -89,5 +90,50 @@ describe('VariantesService', () => {
     await expect(service.findById(1, 999)).rejects.toBeInstanceOf(
       NotFoundException,
     );
+  });
+
+  it('resuelve variantes de compra por ID o SKU y exige catálogos activos', async () => {
+    const activeRow = {
+      id: 4,
+      sku: 'POL-NEG-M',
+      estado: 'ACTIVO',
+      productoId: 2,
+      productoNombre: 'Polera',
+      productoPrecio: new Prisma.Decimal('129.90'),
+      productoEstado: 'ACTIVO',
+      categoriaEstado: 'ACTIVO',
+      tallaId: 3,
+      tallaNombre: 'M',
+      tallaEstado: 'ACTIVO',
+      colorId: 5,
+      colorNombre: 'Negro',
+      colorCodigoHex: '#000000',
+      colorEstado: 'ACTIVO',
+    };
+    transaction.$queryRaw.mockResolvedValue([activeRow]);
+
+    const result = await service.resolveActiveForPurchase(
+      transaction as never,
+      [{ varianteProductoId: 4 }, { sku: ' pol-neg-m ' }],
+    );
+    expect(result).toEqual([
+      {
+        id: 4,
+        sku: 'POL-NEG-M',
+        precio: new Prisma.Decimal('129.90'),
+        producto: { id: 2, nombre: 'Polera' },
+        talla: { id: 3, nombre: 'M' },
+        color: { id: 5, nombre: 'Negro', codigoHex: '#000000' },
+      },
+    ]);
+
+    transaction.$queryRaw.mockResolvedValue([
+      { ...activeRow, productoEstado: 'INACTIVO' },
+    ]);
+    await expect(
+      service.resolveActiveForPurchase(transaction as never, [
+        { varianteProductoId: 4 },
+      ]),
+    ).rejects.toBeInstanceOf(ConflictException);
   });
 });

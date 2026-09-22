@@ -67,6 +67,8 @@ describeWithDatabase('AppController (e2e)', () => {
   });
 
   beforeEach(async () => {
+    await prisma.detalleVenta.deleteMany();
+    await prisma.venta.deleteMany();
     await prisma.movimientoInventario.deleteMany();
     await prisma.inventario.deleteMany();
     await prisma.varianteProducto.deleteMany();
@@ -1945,6 +1947,197 @@ describeWithDatabase('AppController (e2e)', () => {
     expect(unassigned.sucursalId).toBeNull();
     expect(unassigned.estado).toBe('ACTIVO');
     expect(unassigned.rolId).toBe(roleIds.get('CAJERO'));
+  });
+
+  it('registra ventas presenciales pendientes sin modificar el inventario', async () => {
+    const passwordHash = await argon2.hash('unused-hash-value');
+    const cashierRole = await prisma.rol.findUniqueOrThrow({
+      where: { nombre: 'CAJERO' },
+    });
+    const clientRole = await prisma.rol.findUniqueOrThrow({
+      where: { nombre: 'CLIENTE' },
+    });
+    const branch = await prisma.sucursal.create({
+      data: { nombre: 'Sucursal Ventas', ubicacion: 'Centro' },
+    });
+    const cashier = await prisma.usuario.create({
+      data: {
+        nombre: 'Cajero',
+        apellido: 'Ventas',
+        telefono: '70000000',
+        email: 'cajero-ventas@example.test',
+        passwordHash,
+        estado: 'ACTIVO',
+        rolId: cashierRole.id,
+        sucursalId: branch.id,
+      },
+    });
+    const client = await prisma.usuario.create({
+      data: {
+        nombre: 'Cliente',
+        apellido: 'Registrado',
+        telefono: '71111111',
+        email: 'cliente-ventas@example.test',
+        passwordHash,
+        estado: 'ACTIVO',
+        rolId: clientRole.id,
+      },
+    });
+    const category = await prisma.categoria.create({
+      data: { nombre: 'Categoría Ventas' },
+    });
+    const size = await prisma.talla.create({ data: { nombre: 'M Ventas' } });
+    const color = await prisma.color.create({
+      data: { nombre: 'Negro Ventas', codigoHex: '#111111' },
+    });
+    const firstProduct = await prisma.producto.create({
+      data: {
+        nombre: 'Polera Venta',
+        precio: 129.9,
+        categoriaId: category.id,
+      },
+    });
+    const secondProduct = await prisma.producto.create({
+      data: {
+        nombre: 'Gorra Venta',
+        precio: 80,
+        categoriaId: category.id,
+      },
+    });
+    const firstVariant = await prisma.varianteProducto.create({
+      data: {
+        productoId: firstProduct.id,
+        tallaId: size.id,
+        colorId: color.id,
+        sku: 'VENTA-POL-M',
+      },
+    });
+    const secondVariant = await prisma.varianteProducto.create({
+      data: {
+        productoId: secondProduct.id,
+        tallaId: size.id,
+        colorId: color.id,
+        sku: 'VENTA-GOR-M',
+      },
+    });
+    await prisma.inventario.createMany({
+      data: [
+        {
+          sucursalId: branch.id,
+          varianteProductoId: firstVariant.id,
+          cantidadFisica: 10,
+          cantidadReservada: 2,
+          cantidadNoDisponible: 1,
+        },
+        {
+          sucursalId: branch.id,
+          varianteProductoId: secondVariant.id,
+          cantidadFisica: 3,
+        },
+      ],
+    });
+    const inventoryBefore = await prisma.inventario.findMany({
+      where: { sucursalId: branch.id },
+      orderBy: { varianteProductoId: 'asc' },
+    });
+    const jwtService = app.get(JwtService);
+    const cashierToken = jwtService.sign({ sub: cashier.id, role: 'CAJERO' });
+    const clientToken = jwtService.sign({ sub: client.id, role: 'CLIENTE' });
+    const path = '/ventas/presenciales';
+
+    await request(app.getHttpServer())
+      .post(path)
+      .send({ detalles: [] })
+      .expect(401);
+    await request(app.getHttpServer())
+      .post(path)
+      .set('Authorization', `Bearer ${clientToken}`)
+      .send({
+        detalles: [{ varianteProductoId: firstVariant.id, cantidad: 1 }],
+      })
+      .expect(403);
+
+    const created = await request(app.getHttpServer())
+      .post(path)
+      .set('Authorization', `Bearer ${cashierToken}`)
+      .send({
+        detalles: [
+          { varianteProductoId: firstVariant.id, cantidad: 1 },
+          { sku: ' venta-pol-m ', cantidad: 2 },
+          { varianteProductoId: secondVariant.id, cantidad: 1 },
+        ],
+      })
+      .expect(201);
+    expect(created.body).toMatchObject({
+      canal: 'PRESENCIAL',
+      estado: 'PENDIENTE_PAGO',
+      nombreFacturacion: 'CONSUMIDOR FINAL',
+      documentoFacturacion: '0',
+      total: 469.7,
+      sucursal: { id: branch.id },
+      cajero: { id: cashier.id },
+      cliente: null,
+    });
+    expect(created.body.detalles).toHaveLength(2);
+    expect(created.body.detalles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          cantidad: 3,
+          precioUnitario: 129.9,
+          subtotal: 389.7,
+          variante: expect.objectContaining({ id: firstVariant.id }),
+        }),
+        expect.objectContaining({
+          cantidad: 1,
+          precioUnitario: 80,
+          subtotal: 80,
+          variante: expect.objectContaining({ id: secondVariant.id }),
+        }),
+      ]),
+    );
+
+    const saved = await prisma.venta.findUniqueOrThrow({
+      where: { id: created.body.id as number },
+      include: { detalles: true },
+    });
+    expect(saved.detalles).toHaveLength(2);
+    expect(
+      saved.detalles
+        .find((detail) => detail.varianteProductoId === firstVariant.id)
+        ?.precioUnitario.toString(),
+    ).toBe('129.9');
+    expect(
+      await prisma.inventario.findMany({
+        where: { sucursalId: branch.id },
+        orderBy: { varianteProductoId: 'asc' },
+      }),
+    ).toEqual(inventoryBefore);
+
+    await request(app.getHttpServer())
+      .post(path)
+      .set('Authorization', `Bearer ${cashierToken}`)
+      .send({
+        clienteId: client.id,
+        nombreFacturacion: 'Cliente Registrado',
+        documentoFacturacion: '1234567',
+        detalles: [{ sku: secondVariant.sku, cantidad: 1 }],
+      })
+      .expect(201)
+      .expect(({ body }) => {
+        expect(body.cliente).toMatchObject({ id: client.id });
+        expect(body.nombreFacturacion).toBe('Cliente Registrado');
+      });
+
+    const countBeforeFailure = await prisma.venta.count();
+    await request(app.getHttpServer())
+      .post(path)
+      .set('Authorization', `Bearer ${cashierToken}`)
+      .send({
+        detalles: [{ varianteProductoId: secondVariant.id, cantidad: 4 }],
+      })
+      .expect(409);
+    expect(await prisma.venta.count()).toBe(countBeforeFailure);
+    expect(await prisma.detalleVenta.count()).toBe(3);
   });
 
   it('migra usuarios VENDEDOR existentes a CAJERO conservando su relación', async () => {

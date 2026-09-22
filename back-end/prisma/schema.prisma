@@ -14,6 +14,15 @@ enum TipoMovimiento {
   MERMA
 }
 
+enum CanalVenta {
+  PRESENCIAL
+  DIGITAL
+}
+
+enum EstadoVenta {
+  PENDIENTE_PAGO
+}
+
 model Rol {
   id          Int       @id @default(autoincrement())
   nombre      String    @unique
@@ -39,6 +48,8 @@ model Usuario {
   sucursalId            Int?                   @map("sucursal_id")
   sucursal              Sucursal?              @relation(fields: [sucursalId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   movimientosInventario MovimientoInventario[]
+  ventasComoCajero      Venta[]                 @relation("VentaCajero")
+  ventasComoCliente     Venta[]                 @relation("VentaCliente")
 
   @@index([sucursalId])
   @@map("usuarios")
@@ -56,6 +67,7 @@ model Sucursal {
   inventarios        Inventario[]
   movimientosOrigen  MovimientoInventario[] @relation("MovimientoSucursalOrigen")
   movimientosDestino MovimientoInventario[] @relation("MovimientoSucursalDestino")
+  ventas             Venta[]
 
   @@map("sucursales")
 }
@@ -120,6 +132,7 @@ model VarianteProducto {
   color                 Color                  @relation(fields: [colorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   inventarios           Inventario[]
   movimientosInventario MovimientoInventario[]
+  detallesVenta         DetalleVenta[]
 
   @@unique([productoId, tallaId, colorId], map: "variantes_producto_combinacion_key")
   @@index([productoId])
@@ -168,4 +181,42 @@ model MovimientoInventario {
   @@index([sucursalOrigenId, fecha, id], map: "movimientos_inventario_origen_fecha_idx")
   @@index([sucursalDestinoId, fecha, id], map: "movimientos_inventario_destino_fecha_idx")
   @@map("movimientos_inventario")
+}
+
+model Venta {
+  id                   Int          @id @default(autoincrement())
+  canal                CanalVenta
+  sucursalId           Int          @map("sucursal_id")
+  cajeroId             Int?         @map("cajero_id")
+  clienteId            Int?         @map("cliente_id")
+  nombreFacturacion    String       @map("nombre_facturacion") @db.VarChar(200)
+  documentoFacturacion String       @map("documento_facturacion") @db.VarChar(50)
+  fecha                DateTime     @default(now())
+  total                Decimal      @db.Decimal(14, 2)
+  estado               EstadoVenta @default(PENDIENTE_PAGO)
+  sucursal             Sucursal     @relation(fields: [sucursalId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  cajero               Usuario?     @relation("VentaCajero", fields: [cajeroId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  cliente              Usuario?     @relation("VentaCliente", fields: [clienteId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  detalles             DetalleVenta[]
+
+  @@index([sucursalId])
+  @@index([cajeroId])
+  @@index([clienteId])
+  @@index([estado, fecha, id])
+  @@map("ventas")
+}
+
+model DetalleVenta {
+  id                 Int              @id @default(autoincrement())
+  ventaId            Int              @map("venta_id")
+  varianteProductoId Int              @map("variante_producto_id")
+  cantidad           Int
+  precioUnitario     Decimal          @map("precio_unitario") @db.Decimal(12, 2)
+  subtotal           Decimal          @db.Decimal(14, 2)
+  venta              Venta            @relation(fields: [ventaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  varianteProducto   VarianteProducto @relation(fields: [varianteProductoId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([ventaId, varianteProductoId], map: "detalles_venta_venta_variante_key")
+  @@index([varianteProductoId])
+  @@map("detalles_venta")
 }

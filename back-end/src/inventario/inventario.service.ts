@@ -81,6 +81,15 @@ interface LockedInventoryRow {
   cantidadNoDisponible: number;
 }
 
+interface LockedAvailabilityRow extends LockedInventoryRow {
+  varianteProductoId: number;
+}
+
+export interface CantidadInventarioSolicitada {
+  varianteProductoId: number;
+  cantidad: number;
+}
+
 const MAX_POSTGRES_INTEGER = 2_147_483_647;
 
 const availabilitySelect = {
@@ -113,6 +122,51 @@ type AvailabilityRecord = Prisma.InventarioGetPayload<{
 @Injectable()
 export class InventarioService {
   constructor(private readonly prisma: PrismaService) {}
+
+  async ensureAvailability(
+    transaction: Prisma.TransactionClient,
+    sucursalId: number,
+    requested: CantidadInventarioSolicitada[],
+  ): Promise<void> {
+    if (requested.length === 0) return;
+    const variantIds = requested.map((item) => item.varianteProductoId);
+    const inventories = await transaction.$queryRaw<LockedAvailabilityRow[]>(
+      Prisma.sql`
+        SELECT
+          "id" AS "id",
+          "sucursal_id" AS "sucursalId",
+          "variante_producto_id" AS "varianteProductoId",
+          "cantidad_fisica" AS "cantidadFisica",
+          "cantidad_reservada" AS "cantidadReservada",
+          "cantidad_no_disponible" AS "cantidadNoDisponible"
+        FROM "inventarios"
+        WHERE "sucursal_id" = ${sucursalId}
+          AND "variante_producto_id" IN (${Prisma.join(variantIds)})
+        ORDER BY "variante_producto_id" ASC
+        FOR SHARE
+      `,
+    );
+    const byVariant = new Map(
+      inventories.map((inventory) => [
+        inventory.varianteProductoId,
+        inventory,
+      ]),
+    );
+
+    for (const item of requested) {
+      const inventory = byVariant.get(item.varianteProductoId);
+      const available = inventory
+        ? inventory.cantidadFisica -
+          inventory.cantidadReservada -
+          inventory.cantidadNoDisponible
+        : 0;
+      if (available < item.cantidad) {
+        throw new ConflictException(
+          'No existen suficientes unidades disponibles para una de las variantes.',
+        );
+      }
+    }
+  }
 
   async findAll(query: QueryInventarioDto) {
     if (query.sucursalId !== undefined) {
