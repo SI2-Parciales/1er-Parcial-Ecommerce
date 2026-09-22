@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ValidationPipe } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { EstadoPago, MetodoPago, PrismaClient } from '@prisma/client';
 import { JwtService } from '@nestjs/jwt';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import * as argon2 from 'argon2';
@@ -67,7 +67,12 @@ describeWithDatabase('AppController (e2e)', () => {
   });
 
   beforeEach(async () => {
+    await prisma.detalleCarrito.deleteMany();
+    await prisma.carrito.deleteMany();
+    await prisma.pago.deleteMany();
     await prisma.movimientoInventario.deleteMany();
+    await prisma.detalleVenta.deleteMany();
+    await prisma.venta.deleteMany();
     await prisma.inventario.deleteMany();
     await prisma.varianteProducto.deleteMany();
     await prisma.producto.deleteMany();
@@ -1946,6 +1951,1453 @@ describeWithDatabase('AppController (e2e)', () => {
     expect(unassigned.estado).toBe('ACTIVO');
     expect(unassigned.rolId).toBe(roleIds.get('CAJERO'));
   });
+
+  it('registra ventas presenciales pendientes sin modificar el inventario', async () => {
+    const passwordHash = await argon2.hash('unused-hash-value');
+    const cashierRole = await prisma.rol.findUniqueOrThrow({
+      where: { nombre: 'CAJERO' },
+    });
+    const clientRole = await prisma.rol.findUniqueOrThrow({
+      where: { nombre: 'CLIENTE' },
+    });
+    const branch = await prisma.sucursal.create({
+      data: { nombre: 'Sucursal Ventas', ubicacion: 'Centro' },
+    });
+    const cashier = await prisma.usuario.create({
+      data: {
+        nombre: 'Cajero',
+        apellido: 'Ventas',
+        telefono: '70000000',
+        email: 'cajero-ventas@example.test',
+        passwordHash,
+        estado: 'ACTIVO',
+        rolId: cashierRole.id,
+        sucursalId: branch.id,
+      },
+    });
+    const client = await prisma.usuario.create({
+      data: {
+        nombre: 'Cliente',
+        apellido: 'Registrado',
+        telefono: '71111111',
+        email: 'cliente-ventas@example.test',
+        passwordHash,
+        estado: 'ACTIVO',
+        rolId: clientRole.id,
+      },
+    });
+    const category = await prisma.categoria.create({
+      data: { nombre: 'Categoría Ventas' },
+    });
+    const size = await prisma.talla.create({ data: { nombre: 'M Ventas' } });
+    const color = await prisma.color.create({
+      data: { nombre: 'Negro Ventas', codigoHex: '#111111' },
+    });
+    const firstProduct = await prisma.producto.create({
+      data: {
+        nombre: 'Polera Venta',
+        precio: 129.9,
+        categoriaId: category.id,
+      },
+    });
+    const secondProduct = await prisma.producto.create({
+      data: {
+        nombre: 'Gorra Venta',
+        precio: 80,
+        categoriaId: category.id,
+      },
+    });
+    const firstVariant = await prisma.varianteProducto.create({
+      data: {
+        productoId: firstProduct.id,
+        tallaId: size.id,
+        colorId: color.id,
+        sku: 'VENTA-POL-M',
+      },
+    });
+    const secondVariant = await prisma.varianteProducto.create({
+      data: {
+        productoId: secondProduct.id,
+        tallaId: size.id,
+        colorId: color.id,
+        sku: 'VENTA-GOR-M',
+      },
+    });
+    await prisma.inventario.createMany({
+      data: [
+        {
+          sucursalId: branch.id,
+          varianteProductoId: firstVariant.id,
+          cantidadFisica: 10,
+          cantidadReservada: 2,
+          cantidadNoDisponible: 1,
+        },
+        {
+          sucursalId: branch.id,
+          varianteProductoId: secondVariant.id,
+          cantidadFisica: 3,
+        },
+      ],
+    });
+    const inventoryBefore = await prisma.inventario.findMany({
+      where: { sucursalId: branch.id },
+      orderBy: { varianteProductoId: 'asc' },
+    });
+    const jwtService = app.get(JwtService);
+    const cashierToken = jwtService.sign({ sub: cashier.id, role: 'CAJERO' });
+    const clientToken = jwtService.sign({ sub: client.id, role: 'CLIENTE' });
+    const path = '/ventas/presenciales';
+
+    await request(app.getHttpServer())
+      .post(path)
+      .send({ detalles: [] })
+      .expect(401);
+    await request(app.getHttpServer())
+      .post(path)
+      .set('Authorization', `Bearer ${clientToken}`)
+      .send({
+        detalles: [{ varianteProductoId: firstVariant.id, cantidad: 1 }],
+      })
+      .expect(403);
+
+    const created = await request(app.getHttpServer())
+      .post(path)
+      .set('Authorization', `Bearer ${cashierToken}`)
+      .send({
+        detalles: [
+          { varianteProductoId: firstVariant.id, cantidad: 1 },
+          { sku: ' venta-pol-m ', cantidad: 2 },
+          { varianteProductoId: secondVariant.id, cantidad: 1 },
+        ],
+      })
+      .expect(201);
+    expect(created.body).toMatchObject({
+      canal: 'PRESENCIAL',
+      estado: 'PENDIENTE_PAGO',
+      nombreFacturacion: 'CONSUMIDOR FINAL',
+      documentoFacturacion: '0',
+      total: 469.7,
+      sucursal: { id: branch.id },
+      cajero: { id: cashier.id },
+      cliente: null,
+    });
+    expect(created.body.detalles).toHaveLength(2);
+    expect(created.body.detalles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          cantidad: 3,
+          precioUnitario: 129.9,
+          subtotal: 389.7,
+          variante: expect.objectContaining({ id: firstVariant.id }),
+        }),
+        expect.objectContaining({
+          cantidad: 1,
+          precioUnitario: 80,
+          subtotal: 80,
+          variante: expect.objectContaining({ id: secondVariant.id }),
+        }),
+      ]),
+    );
+
+    const saved = await prisma.venta.findUniqueOrThrow({
+      where: { id: created.body.id as number },
+      include: { detalles: true },
+    });
+    expect(saved.detalles).toHaveLength(2);
+    expect(
+      saved.detalles
+        .find((detail) => detail.varianteProductoId === firstVariant.id)
+        ?.precioUnitario.toString(),
+    ).toBe('129.9');
+    expect(
+      await prisma.inventario.findMany({
+        where: { sucursalId: branch.id },
+        orderBy: { varianteProductoId: 'asc' },
+      }),
+    ).toEqual(inventoryBefore);
+
+    await request(app.getHttpServer())
+      .post(path)
+      .set('Authorization', `Bearer ${cashierToken}`)
+      .send({
+        clienteId: client.id,
+        nombreFacturacion: 'Cliente Registrado',
+        documentoFacturacion: '1234567',
+        detalles: [{ sku: secondVariant.sku, cantidad: 1 }],
+      })
+      .expect(201)
+      .expect(({ body }) => {
+        expect(body.cliente).toMatchObject({ id: client.id });
+        expect(body.nombreFacturacion).toBe('Cliente Registrado');
+      });
+
+    const countBeforeFailure = await prisma.venta.count();
+    await request(app.getHttpServer())
+      .post(path)
+      .set('Authorization', `Bearer ${cashierToken}`)
+      .send({
+        detalles: [{ varianteProductoId: secondVariant.id, cantidad: 4 }],
+      })
+      .expect(409);
+    expect(await prisma.venta.count()).toBe(countBeforeFailure);
+    expect(await prisma.detalleVenta.count()).toBe(3);
+  });
+
+  it('procesa pagos de caja de forma atómica y protege inventario concurrente', async () => {
+    const passwordHash = await argon2.hash('unused-hash-value');
+    const cashierRole = await prisma.rol.findUniqueOrThrow({
+      where: { nombre: 'CAJERO' },
+    });
+    const firstBranch = await prisma.sucursal.create({
+      data: { nombre: 'Sucursal Pagos', ubicacion: 'Centro' },
+    });
+    const secondBranch = await prisma.sucursal.create({
+      data: { nombre: 'Sucursal Pagos Norte', ubicacion: 'Norte' },
+    });
+    const cashier = await prisma.usuario.create({
+      data: {
+        nombre: 'Cajero',
+        apellido: 'Pagos',
+        telefono: '72222222',
+        email: 'cajero-pagos@example.test',
+        passwordHash,
+        estado: 'ACTIVO',
+        rolId: cashierRole.id,
+        sucursalId: firstBranch.id,
+      },
+    });
+    const otherCashier = await prisma.usuario.create({
+      data: {
+        nombre: 'Otro',
+        apellido: 'Cajero',
+        telefono: '73333333',
+        email: 'otro-cajero-pagos@example.test',
+        passwordHash,
+        estado: 'ACTIVO',
+        rolId: cashierRole.id,
+        sucursalId: secondBranch.id,
+      },
+    });
+    const category = await prisma.categoria.create({
+      data: { nombre: 'Categoría Pagos' },
+    });
+    const size = await prisma.talla.create({ data: { nombre: 'M Pagos' } });
+    const color = await prisma.color.create({
+      data: { nombre: 'Azul Pagos', codigoHex: '#0000AA' },
+    });
+    const product = await prisma.producto.create({
+      data: {
+        nombre: 'Prenda Pagos',
+        precio: 100,
+        categoriaId: category.id,
+      },
+    });
+    const variant = await prisma.varianteProducto.create({
+      data: {
+        productoId: product.id,
+        tallaId: size.id,
+        colorId: color.id,
+        sku: 'PRENDA-PAGOS-M',
+      },
+    });
+    const inventory = await prisma.inventario.create({
+      data: {
+        sucursalId: firstBranch.id,
+        varianteProductoId: variant.id,
+        cantidadFisica: 10,
+        cantidadReservada: 1,
+        cantidadNoDisponible: 1,
+      },
+    });
+    const jwtService = app.get(JwtService);
+    const cashierToken = jwtService.sign({ sub: cashier.id, role: 'CAJERO' });
+    const otherCashierToken = jwtService.sign({
+      sub: otherCashier.id,
+      role: 'CAJERO',
+    });
+    const createSale = async (cantidad: number) =>
+      request(app.getHttpServer())
+        .post('/ventas/presenciales')
+        .set('Authorization', `Bearer ${cashierToken}`)
+        .send({ detalles: [{ varianteProductoId: variant.id, cantidad }] })
+        .expect(201);
+    const paymentPath = (saleId: number) => `/ventas/${saleId}/pagos/caja`;
+
+    const cashSale = await createSale(2);
+    const cashPayment = await request(app.getHttpServer())
+      .post(paymentPath(cashSale.body.id as number))
+      .set('Authorization', `Bearer ${cashierToken}`)
+      .send({ metodo: 'EFECTIVO', montoRecibido: 250 })
+      .expect(201);
+    expect(cashPayment.body).toMatchObject({
+      pago: {
+        ventaId: cashSale.body.id,
+        metodo: 'EFECTIVO',
+        monto: 200,
+        montoRecibido: 250,
+        cambio: 50,
+        referencia: null,
+        simulado: true,
+        estado: 'CONFIRMADO',
+      },
+      venta: { id: cashSale.body.id, estado: 'PAGADA', total: 200 },
+    });
+    const afterCash = await prisma.inventario.findUniqueOrThrow({
+      where: { id: inventory.id },
+    });
+    expect(afterCash).toMatchObject({
+      cantidadFisica: 8,
+      cantidadReservada: 1,
+      cantidadNoDisponible: 1,
+    });
+    expect(
+      await prisma.movimientoInventario.count({
+        where: { ventaId: cashSale.body.id as number, tipo: 'VENTA' },
+      }),
+    ).toBe(1);
+    await request(app.getHttpServer())
+      .post(paymentPath(cashSale.body.id as number))
+      .set('Authorization', `Bearer ${cashierToken}`)
+      .send({ metodo: 'EFECTIVO', montoRecibido: 250 })
+      .expect(409);
+    expect(
+      await prisma.movimientoInventario.count({
+        where: { ventaId: cashSale.body.id as number },
+      }),
+    ).toBe(1);
+
+    const cardSale = await createSale(1);
+    await request(app.getHttpServer())
+      .post(paymentPath(cardSale.body.id as number))
+      .set('Authorization', `Bearer ${cashierToken}`)
+      .send({ metodo: 'TARJETA', referencia: ' AUT-SIM-001 ' })
+      .expect(201)
+      .expect(({ body }) => {
+        expect(body.pago).toMatchObject({
+          metodo: 'TARJETA',
+          monto: 100,
+          montoRecibido: null,
+          cambio: null,
+          referencia: 'AUT-SIM-001',
+          simulado: true,
+        });
+      });
+    const qrSale = await createSale(1);
+    await request(app.getHttpServer())
+      .post(paymentPath(qrSale.body.id as number))
+      .set('Authorization', `Bearer ${cashierToken}`)
+      .send({ metodo: 'QR' })
+      .expect(201)
+      .expect(({ body }) => {
+        expect(body.pago).toMatchObject({
+          metodo: 'QR',
+          monto: 100,
+          referencia: null,
+          simulado: true,
+        });
+      });
+
+    const insufficientCashSale = await createSale(1);
+    await request(app.getHttpServer())
+      .post(paymentPath(insufficientCashSale.body.id as number))
+      .set('Authorization', `Bearer ${cashierToken}`)
+      .send({ metodo: 'EFECTIVO', montoRecibido: 99.99 })
+      .expect(400);
+    expect(
+      await prisma.venta.findUniqueOrThrow({
+        where: { id: insufficientCashSale.body.id as number },
+      }),
+    ).toMatchObject({ estado: 'PENDIENTE_PAGO' });
+
+    const forbiddenSale = await createSale(1);
+    await request(app.getHttpServer())
+      .post(paymentPath(forbiddenSale.body.id as number))
+      .set('Authorization', `Bearer ${otherCashierToken}`)
+      .send({ metodo: 'QR' })
+      .expect(403);
+    await request(app.getHttpServer())
+      .post(paymentPath(999999))
+      .set('Authorization', `Bearer ${cashierToken}`)
+      .send({ metodo: 'QR' })
+      .expect(404);
+
+    const lostStockSale = await createSale(3);
+    await prisma.inventario.update({
+      where: { id: inventory.id },
+      data: { cantidadFisica: { decrement: 2 } },
+    });
+    const beforeLostStockPayment = await prisma.inventario.findUniqueOrThrow({
+      where: { id: inventory.id },
+    });
+    await request(app.getHttpServer())
+      .post(paymentPath(lostStockSale.body.id as number))
+      .set('Authorization', `Bearer ${cashierToken}`)
+      .send({ metodo: 'QR' })
+      .expect(409);
+    expect(
+      await prisma.inventario.findUniqueOrThrow({
+        where: { id: inventory.id },
+      }),
+    ).toEqual(beforeLostStockPayment);
+
+    const rollbackSale = await createSale(1);
+    await prisma.pago.create({
+      data: {
+        ventaId: rollbackSale.body.id as number,
+        metodo: MetodoPago.QR,
+        monto: 100,
+        simulado: true,
+        estado: EstadoPago.CONFIRMADO,
+      },
+    });
+    const beforeRollback = await prisma.inventario.findUniqueOrThrow({
+      where: { id: inventory.id },
+    });
+    await request(app.getHttpServer())
+      .post(paymentPath(rollbackSale.body.id as number))
+      .set('Authorization', `Bearer ${cashierToken}`)
+      .send({ metodo: 'QR' })
+      .expect(409);
+    expect(
+      await prisma.inventario.findUniqueOrThrow({
+        where: { id: inventory.id },
+      }),
+    ).toEqual(beforeRollback);
+    expect(
+      await prisma.movimientoInventario.count({
+        where: { ventaId: rollbackSale.body.id as number },
+      }),
+    ).toBe(0);
+    expect(
+      await prisma.venta.findUniqueOrThrow({
+        where: { id: rollbackSale.body.id as number },
+      }),
+    ).toMatchObject({ estado: 'PENDIENTE_PAGO' });
+
+    const concurrentSale = await createSale(1);
+    const duplicateResponses = await Promise.all([
+      request(app.getHttpServer())
+        .post(paymentPath(concurrentSale.body.id as number))
+        .set('Authorization', `Bearer ${cashierToken}`)
+        .send({ metodo: 'QR' }),
+      request(app.getHttpServer())
+        .post(paymentPath(concurrentSale.body.id as number))
+        .set('Authorization', `Bearer ${cashierToken}`)
+        .send({ metodo: 'QR' }),
+    ]);
+    expect(
+      duplicateResponses
+        .map((response) => response.status)
+        .sort((left, right) => left - right),
+    ).toEqual([201, 409]);
+    expect(
+      await prisma.pago.count({
+        where: {
+          ventaId: concurrentSale.body.id as number,
+          estado: EstadoPago.CONFIRMADO,
+        },
+      }),
+    ).toBe(1);
+
+    const firstCompetingSale = await createSale(1);
+    const secondCompetingSale = await createSale(1);
+    const competingResponses = await Promise.all([
+      request(app.getHttpServer())
+        .post(paymentPath(firstCompetingSale.body.id as number))
+        .set('Authorization', `Bearer ${cashierToken}`)
+        .send({ metodo: 'QR' }),
+      request(app.getHttpServer())
+        .post(paymentPath(secondCompetingSale.body.id as number))
+        .set('Authorization', `Bearer ${cashierToken}`)
+        .send({ metodo: 'QR' }),
+    ]);
+    expect(
+      competingResponses
+        .map((response) => response.status)
+        .sort((left, right) => left - right),
+    ).toEqual([201, 409]);
+    const finalInventory = await prisma.inventario.findUniqueOrThrow({
+      where: { id: inventory.id },
+    });
+    expect(
+      finalInventory.cantidadFisica -
+        finalInventory.cantidadReservada -
+        finalInventory.cantidadNoDisponible,
+    ).toBe(0);
+  }, 30_000);
+
+  it('gestiona un carrito persistente por sucursal sin alterar inventario', async () => {
+    const passwordHash = await argon2.hash('unused-hash-value');
+    const clientRole = await prisma.rol.findUniqueOrThrow({
+      where: { nombre: 'CLIENTE' },
+    });
+    const adminRole = await prisma.rol.findUniqueOrThrow({
+      where: { nombre: 'ADMINISTRADOR' },
+    });
+    const customer = await prisma.usuario.create({
+      data: {
+        nombre: 'Cliente',
+        apellido: 'Carrito',
+        telefono: '70001001',
+        email: 'cliente-carrito@example.test',
+        passwordHash,
+        estado: 'ACTIVO',
+        rolId: clientRole.id,
+      },
+    });
+    const secondCustomer = await prisma.usuario.create({
+      data: {
+        nombre: 'Segundo',
+        apellido: 'Cliente',
+        telefono: '70001002',
+        email: 'segundo-carrito@example.test',
+        passwordHash,
+        estado: 'ACTIVO',
+        rolId: clientRole.id,
+      },
+    });
+    const concurrentCustomer = await prisma.usuario.create({
+      data: {
+        nombre: 'Cliente',
+        apellido: 'Concurrente',
+        telefono: '70001003',
+        email: 'concurrente-carrito@example.test',
+        passwordHash,
+        estado: 'ACTIVO',
+        rolId: clientRole.id,
+      },
+    });
+    const administrator = await prisma.usuario.create({
+      data: {
+        nombre: 'Admin',
+        apellido: 'Carrito',
+        telefono: '70001004',
+        email: 'admin-carrito@example.test',
+        passwordHash,
+        estado: 'ACTIVO',
+        rolId: adminRole.id,
+      },
+    });
+    const branch = await prisma.sucursal.create({
+      data: { nombre: 'Sucursal Carrito', ubicacion: 'Centro' },
+    });
+    const emptyBranch = await prisma.sucursal.create({
+      data: { nombre: 'Sucursal Sin Stock', ubicacion: 'Norte' },
+    });
+    const category = await prisma.categoria.create({
+      data: { nombre: 'Categoría Carrito' },
+    });
+    const size = await prisma.talla.create({ data: { nombre: 'M Carrito' } });
+    const color = await prisma.color.create({
+      data: { nombre: 'Negro Carrito', codigoHex: '#101010' },
+    });
+    const product = await prisma.producto.create({
+      data: {
+        nombre: 'Prenda Carrito',
+        imagenUrl: '/uploads/productos/prenda-carrito.webp',
+        precio: 49.95,
+        categoriaId: category.id,
+      },
+    });
+    const variant = await prisma.varianteProducto.create({
+      data: {
+        productoId: product.id,
+        tallaId: size.id,
+        colorId: color.id,
+        sku: 'PRENDA-CARRITO-M',
+      },
+    });
+    const inventory = await prisma.inventario.create({
+      data: {
+        sucursalId: branch.id,
+        varianteProductoId: variant.id,
+        cantidadFisica: 5,
+        cantidadReservada: 1,
+        cantidadNoDisponible: 1,
+      },
+    });
+    const jwtService = app.get(JwtService);
+    const tokenFor = (id: number, role: string) =>
+      jwtService.sign({ sub: id, role });
+    const customerToken = tokenFor(customer.id, 'CLIENTE');
+    const secondCustomerToken = tokenFor(secondCustomer.id, 'CLIENTE');
+    const concurrentCustomerToken = tokenFor(concurrentCustomer.id, 'CLIENTE');
+    const administratorToken = tokenFor(administrator.id, 'ADMINISTRADOR');
+
+    await request(app.getHttpServer())
+      .get('/carrito')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toMatchObject({
+          sucursal: null,
+          detalles: [],
+          total: 0,
+        });
+      });
+    await request(app.getHttpServer())
+      .post('/carrito/detalles')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({ varianteProductoId: variant.id, cantidad: 1 })
+      .expect(409);
+    await request(app.getHttpServer())
+      .put('/carrito/sucursal')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({ sucursalId: branch.id })
+      .expect(200);
+    await request(app.getHttpServer())
+      .get('/carrito')
+      .set('Authorization', `Bearer ${administratorToken}`)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .post('/carrito/detalles')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({ varianteProductoId: variant.id, cantidad: 1 })
+      .expect(200);
+    const incremented = await request(app.getHttpServer())
+      .post('/carrito/detalles')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({ varianteProductoId: variant.id, cantidad: 1 })
+      .expect(200);
+    expect(incremented.body).toMatchObject({
+      total: 99.9,
+      detalles: [
+        {
+          cantidad: 2,
+          precioUnitario: 49.95,
+          subtotal: 99.9,
+          cantidadDisponible: 3,
+          comercializable: true,
+          disponible: true,
+        },
+      ],
+    });
+    expect(await prisma.detalleCarrito.count()).toBe(1);
+    const detailId = incremented.body.detalles[0].id as number;
+
+    await request(app.getHttpServer())
+      .delete(`/carrito/detalles/${detailId}`)
+      .set('Authorization', `Bearer ${secondCustomerToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .patch(`/carrito/detalles/${detailId}`)
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({ cantidad: 4 })
+      .expect(409);
+    await request(app.getHttpServer())
+      .patch(`/carrito/detalles/${detailId}`)
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({ cantidad: 3 })
+      .expect(200);
+
+    await prisma.inventario.update({
+      where: { id: inventory.id },
+      data: { cantidadFisica: 3 },
+    });
+    await prisma.producto.update({
+      where: { id: product.id },
+      data: { precio: 50.1 },
+    });
+    const inventoryBeforeRead = await prisma.inventario.findUniqueOrThrow({
+      where: { id: inventory.id },
+    });
+    await request(app.getHttpServer())
+      .get('/carrito')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toMatchObject({
+          total: 150.3,
+          detalles: [
+            {
+              cantidad: 3,
+              precioUnitario: 50.1,
+              subtotal: 150.3,
+              cantidadDisponible: 1,
+              comercializable: true,
+              disponible: false,
+            },
+          ],
+        });
+      });
+    expect(
+      await prisma.inventario.findUniqueOrThrow({
+        where: { id: inventory.id },
+      }),
+    ).toEqual(inventoryBeforeRead);
+    expect(await prisma.movimientoInventario.count()).toBe(0);
+
+    await request(app.getHttpServer())
+      .put('/carrito/sucursal')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({ sucursalId: emptyBranch.id })
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.detalles).toHaveLength(1);
+        expect(body.detalles[0]).toMatchObject({
+          cantidadDisponible: 0,
+          disponible: false,
+        });
+      });
+    await request(app.getHttpServer())
+      .delete(`/carrito/detalles/${detailId}`)
+      .set('Authorization', `Bearer ${customerToken}`)
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toMatchObject({ detalles: [], total: 0 });
+      });
+
+    const concurrentCreation = await Promise.all([
+      request(app.getHttpServer())
+        .get('/carrito')
+        .set('Authorization', `Bearer ${concurrentCustomerToken}`),
+      request(app.getHttpServer())
+        .get('/carrito')
+        .set('Authorization', `Bearer ${concurrentCustomerToken}`),
+    ]);
+    expect(concurrentCreation.map(({ status }) => status)).toEqual([200, 200]);
+    expect(
+      await prisma.carrito.count({
+        where: { usuarioId: concurrentCustomer.id },
+      }),
+    ).toBe(1);
+
+    await prisma.inventario.update({
+      where: { id: inventory.id },
+      data: {
+        cantidadFisica: 10,
+        cantidadReservada: 0,
+        cantidadNoDisponible: 0,
+      },
+    });
+    await request(app.getHttpServer())
+      .put('/carrito/sucursal')
+      .set('Authorization', `Bearer ${concurrentCustomerToken}`)
+      .send({ sucursalId: branch.id })
+      .expect(200);
+    const concurrentAdds = await Promise.all([
+      request(app.getHttpServer())
+        .post('/carrito/detalles')
+        .set('Authorization', `Bearer ${concurrentCustomerToken}`)
+        .send({ varianteProductoId: variant.id, cantidad: 1 }),
+      request(app.getHttpServer())
+        .post('/carrito/detalles')
+        .set('Authorization', `Bearer ${concurrentCustomerToken}`)
+        .send({ varianteProductoId: variant.id, cantidad: 1 }),
+    ]);
+    expect(concurrentAdds.map(({ status }) => status)).toEqual([200, 200]);
+    const concurrentCart = await prisma.carrito.findUniqueOrThrow({
+      where: { usuarioId: concurrentCustomer.id },
+      include: { detalles: true },
+    });
+    expect(concurrentCart.detalles).toHaveLength(1);
+    expect(concurrentCart.detalles[0].cantidad).toBe(2);
+    expect(
+      await prisma.inventario.findUniqueOrThrow({
+        where: { id: inventory.id },
+      }),
+    ).toMatchObject({
+      cantidadFisica: 10,
+      cantidadReservada: 0,
+      cantidadNoDisponible: 0,
+    });
+    expect(await prisma.movimientoInventario.count()).toBe(0);
+  }, 30_000);
+
+  it('crea compras digitales idempotentes sin modificar carrito ni inventario', async () => {
+    const passwordHash = await argon2.hash('unused-hash-value');
+    const clientRole = await prisma.rol.findUniqueOrThrow({
+      where: { nombre: 'CLIENTE' },
+    });
+    const adminRole = await prisma.rol.findUniqueOrThrow({
+      where: { nombre: 'ADMINISTRADOR' },
+    });
+    const createCustomer = (email: string, telefono: string) =>
+      prisma.usuario.create({
+        data: {
+          nombre: 'Cliente',
+          apellido: 'Digital',
+          telefono,
+          email,
+          passwordHash,
+          estado: 'ACTIVO',
+          rolId: clientRole.id,
+        },
+      });
+    const [customer, concurrentCustomer, failingCustomer, emptyCustomer] =
+      await Promise.all([
+        createCustomer('compra-digital@example.test', '71110001'),
+        createCustomer('compra-concurrente@example.test', '71110002'),
+        createCustomer('compra-sin-stock@example.test', '71110003'),
+        createCustomer('compra-vacia@example.test', '71110004'),
+      ]);
+    const administrator = await prisma.usuario.create({
+      data: {
+        nombre: 'Admin',
+        apellido: 'Digital',
+        telefono: '71110005',
+        email: 'admin-compra-digital@example.test',
+        passwordHash,
+        estado: 'ACTIVO',
+        rolId: adminRole.id,
+      },
+    });
+    const branch = await prisma.sucursal.create({
+      data: { nombre: 'Sucursal Compra Digital', ubicacion: 'Centro' },
+    });
+    const category = await prisma.categoria.create({
+      data: { nombre: 'Categoría Compra Digital' },
+    });
+    const size = await prisma.talla.create({
+      data: { nombre: 'M Compra Digital' },
+    });
+    const firstColor = await prisma.color.create({
+      data: { nombre: 'Negro Compra Digital', codigoHex: '#111111' },
+    });
+    const secondColor = await prisma.color.create({
+      data: { nombre: 'Azul Compra Digital', codigoHex: '#1111AA' },
+    });
+    const firstProduct = await prisma.producto.create({
+      data: {
+        nombre: 'Chaqueta Digital',
+        precio: 100.25,
+        categoriaId: category.id,
+      },
+    });
+    const secondProduct = await prisma.producto.create({
+      data: {
+        nombre: 'Polera Digital',
+        precio: 20.1,
+        categoriaId: category.id,
+      },
+    });
+    const firstVariant = await prisma.varianteProducto.create({
+      data: {
+        productoId: firstProduct.id,
+        tallaId: size.id,
+        colorId: firstColor.id,
+        sku: 'CHAQ-DIGITAL-M',
+      },
+    });
+    const secondVariant = await prisma.varianteProducto.create({
+      data: {
+        productoId: secondProduct.id,
+        tallaId: size.id,
+        colorId: secondColor.id,
+        sku: 'POL-DIGITAL-M',
+      },
+    });
+    await prisma.inventario.createMany({
+      data: [
+        {
+          sucursalId: branch.id,
+          varianteProductoId: firstVariant.id,
+          cantidadFisica: 10,
+          cantidadReservada: 1,
+          cantidadNoDisponible: 1,
+        },
+        {
+          sucursalId: branch.id,
+          varianteProductoId: secondVariant.id,
+          cantidadFisica: 5,
+          cantidadReservada: 0,
+          cantidadNoDisponible: 0,
+        },
+      ],
+    });
+    const cart = await prisma.carrito.create({
+      data: {
+        usuarioId: customer.id,
+        sucursalId: branch.id,
+        detalles: {
+          create: [
+            { varianteProductoId: firstVariant.id, cantidad: 2 },
+            { varianteProductoId: secondVariant.id, cantidad: 1 },
+          ],
+        },
+      },
+      include: { detalles: true },
+    });
+    await prisma.carrito.create({
+      data: {
+        usuarioId: concurrentCustomer.id,
+        sucursalId: branch.id,
+        detalles: {
+          create: { varianteProductoId: firstVariant.id, cantidad: 1 },
+        },
+      },
+    });
+    await prisma.carrito.create({
+      data: { usuarioId: emptyCustomer.id, sucursalId: branch.id },
+    });
+    await prisma.carrito.create({
+      data: {
+        usuarioId: failingCustomer.id,
+        sucursalId: branch.id,
+        detalles: {
+          create: { varianteProductoId: secondVariant.id, cantidad: 6 },
+        },
+      },
+    });
+    const inventoriesBefore = await prisma.inventario.findMany({
+      orderBy: { id: 'asc' },
+    });
+    const jwtService = app.get(JwtService);
+    const tokenFor = (id: number, role: string) =>
+      jwtService.sign({ sub: id, role });
+    const customerToken = tokenFor(customer.id, 'CLIENTE');
+    const concurrentToken = tokenFor(concurrentCustomer.id, 'CLIENTE');
+    const failingToken = tokenFor(failingCustomer.id, 'CLIENTE');
+    const emptyToken = tokenFor(emptyCustomer.id, 'CLIENTE');
+    const adminToken = tokenFor(administrator.id, 'ADMINISTRADOR');
+    const checkoutBody = {
+      nombreFacturacion: 'Ana Digital',
+      documentoFacturacion: '9876543',
+    };
+    const key = randomUUID();
+
+    await request(app.getHttpServer())
+      .post('/ventas/digitales')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send(checkoutBody)
+      .expect(400);
+    await request(app.getHttpServer())
+      .post('/ventas/digitales')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .set('Idempotency-Key', randomUUID())
+      .send(checkoutBody)
+      .expect(403);
+    await request(app.getHttpServer())
+      .post('/ventas/digitales')
+      .set('Authorization', `Bearer ${emptyToken}`)
+      .set('Idempotency-Key', randomUUID())
+      .send(checkoutBody)
+      .expect(409);
+    await request(app.getHttpServer())
+      .post('/ventas/digitales')
+      .set('Authorization', `Bearer ${failingToken}`)
+      .set('Idempotency-Key', randomUUID())
+      .send(checkoutBody)
+      .expect(409);
+    expect(
+      await prisma.venta.count({ where: { clienteId: failingCustomer.id } }),
+    ).toBe(0);
+
+    const created = await request(app.getHttpServer())
+      .post('/ventas/digitales')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .set('Idempotency-Key', key)
+      .send(checkoutBody)
+      .expect(201);
+    expect(created.body).toMatchObject({
+      canal: 'DIGITAL',
+      sucursal: { id: branch.id },
+      cajero: null,
+      cliente: { id: customer.id },
+      nombreFacturacion: 'Ana Digital',
+      documentoFacturacion: '9876543',
+      total: 220.6,
+      estado: 'PENDIENTE_PAGO',
+      detalles: [
+        { cantidad: 2, precioUnitario: 100.25, subtotal: 200.5 },
+        { cantidad: 1, precioUnitario: 20.1, subtotal: 20.1 },
+      ],
+    });
+    const saleId = created.body.id as number;
+    const saved = await prisma.venta.findUniqueOrThrow({
+      where: { id: saleId },
+      include: { detalles: { orderBy: { id: 'asc' } } },
+    });
+    expect(saved).toMatchObject({
+      canal: 'DIGITAL',
+      clienteId: customer.id,
+      cajeroId: null,
+      sucursalId: branch.id,
+      estado: 'PENDIENTE_PAGO',
+      claveIdempotencia: key,
+    });
+    expect(
+      saved.detalles.map(({ precioUnitario }) => precioUnitario.toNumber()),
+    ).toEqual([100.25, 20.1]);
+    expect(
+      await prisma.carrito.findUniqueOrThrow({
+        where: { id: cart.id },
+        include: { detalles: { orderBy: { id: 'asc' } } },
+      }),
+    ).toMatchObject({
+      sucursalId: branch.id,
+      detalles: [
+        { varianteProductoId: firstVariant.id, cantidad: 2 },
+        { varianteProductoId: secondVariant.id, cantidad: 1 },
+      ],
+    });
+    expect(
+      await prisma.inventario.findMany({ orderBy: { id: 'asc' } }),
+    ).toEqual(inventoriesBefore);
+    expect(await prisma.movimientoInventario.count()).toBe(0);
+    expect(await prisma.pago.count()).toBe(0);
+
+    await request(app.getHttpServer())
+      .post('/ventas/digitales')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .set('Idempotency-Key', key)
+      .send(checkoutBody)
+      .expect(201)
+      .expect(({ body }) => expect(body.id).toBe(saleId));
+    expect(
+      await prisma.venta.count({
+        where: { clienteId: customer.id, canal: 'DIGITAL' },
+      }),
+    ).toBe(1);
+    await request(app.getHttpServer())
+      .post('/ventas/digitales')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .set('Idempotency-Key', key)
+      .send({ ...checkoutBody, documentoFacturacion: 'OTRO' })
+      .expect(409);
+
+    await prisma.producto.update({
+      where: { id: firstProduct.id },
+      data: { precio: 150 },
+    });
+    expect(
+      (
+        await prisma.detalleVenta.findFirstOrThrow({
+          where: { ventaId: saleId, varianteProductoId: firstVariant.id },
+        })
+      ).precioUnitario.toNumber(),
+    ).toBe(100.25);
+
+    const concurrentKey = randomUUID();
+    const concurrentResponses = await Promise.all([
+      request(app.getHttpServer())
+        .post('/ventas/digitales')
+        .set('Authorization', `Bearer ${concurrentToken}`)
+        .set('Idempotency-Key', concurrentKey)
+        .send(checkoutBody),
+      request(app.getHttpServer())
+        .post('/ventas/digitales')
+        .set('Authorization', `Bearer ${concurrentToken}`)
+        .set('Idempotency-Key', concurrentKey)
+        .send(checkoutBody),
+    ]);
+    expect(concurrentResponses.map(({ status }) => status)).toEqual([201, 201]);
+    expect(concurrentResponses[0].body.id).toBe(concurrentResponses[1].body.id);
+    expect(
+      await prisma.venta.count({
+        where: { clienteId: concurrentCustomer.id, canal: 'DIGITAL' },
+      }),
+    ).toBe(1);
+
+    await prisma.varianteProducto.update({
+      where: { id: secondVariant.id },
+      data: { estado: 'INACTIVO' },
+    });
+    await request(app.getHttpServer())
+      .post('/ventas/digitales')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .set('Idempotency-Key', randomUUID())
+      .send(checkoutBody)
+      .expect(409);
+  }, 30_000);
+
+  it('confirma pagos electrónicos simulados y conserva la consistencia digital', async () => {
+    const passwordHash = await argon2.hash('unused-hash-value');
+    const clientRole = await prisma.rol.findUniqueOrThrow({
+      where: { nombre: 'CLIENTE' },
+    });
+    const cashierRole = await prisma.rol.findUniqueOrThrow({
+      where: { nombre: 'CAJERO' },
+    });
+    const createCustomer = (index: number) =>
+      prisma.usuario.create({
+        data: {
+          nombre: `Cliente ${index}`,
+          apellido: 'Pago Digital',
+          telefono: `72220${index.toString().padStart(3, '0')}`,
+          email: `pago-digital-${index}@example.test`,
+          passwordHash,
+          estado: 'ACTIVO',
+          rolId: clientRole.id,
+        },
+      });
+    const customers = await Promise.all(
+      Array.from({ length: 8 }, (_value, index) => createCustomer(index + 1)),
+    );
+    const [owner, other, modified, noStock, rollback, duplicate, competitorA, competitorB] =
+      customers;
+    const branch = await prisma.sucursal.create({
+      data: { nombre: 'Sucursal Pago Digital', ubicacion: 'Centro' },
+    });
+    const cashier = await prisma.usuario.create({
+      data: {
+        nombre: 'Cajero',
+        apellido: 'Pago Digital',
+        telefono: '73330000',
+        email: 'cajero-pago-digital@example.test',
+        passwordHash,
+        estado: 'ACTIVO',
+        rolId: cashierRole.id,
+        sucursalId: branch.id,
+      },
+    });
+    const category = await prisma.categoria.create({
+      data: { nombre: 'Categoría Pago Digital' },
+    });
+    const size = await prisma.talla.create({
+      data: { nombre: 'M Pago Digital' },
+    });
+    const createStockedVariant = async (
+      suffix: string,
+      precio: number,
+      cantidadFisica: number,
+      cantidadReservada = 0,
+      cantidadNoDisponible = 0,
+    ) => {
+      const color = await prisma.color.create({
+        data: {
+          nombre: `Color ${suffix}`,
+          codigoHex: `#${suffix.padStart(6, '0').slice(-6)}`,
+        },
+      });
+      const product = await prisma.producto.create({
+        data: {
+          nombre: `Producto ${suffix}`,
+          precio,
+          categoriaId: category.id,
+        },
+      });
+      const variant = await prisma.varianteProducto.create({
+        data: {
+          productoId: product.id,
+          tallaId: size.id,
+          colorId: color.id,
+          sku: `PAGO-DIGITAL-${suffix}`,
+        },
+      });
+      const inventory = await prisma.inventario.create({
+        data: {
+          sucursalId: branch.id,
+          varianteProductoId: variant.id,
+          cantidadFisica,
+          cantidadReservada,
+          cantidadNoDisponible,
+        },
+      });
+      return { variant, inventory };
+    };
+    const core = await createStockedVariant('100001', 50, 20, 1, 1);
+    const secondary = await createStockedVariant('100002', 25.5, 10);
+    const scarce = await createStockedVariant('100003', 40, 1);
+    const rollbackStock = await createStockedVariant('100004', 30, 3);
+    const race = await createStockedVariant('100005', 10, 2);
+    const jwtService = app.get(JwtService);
+    const tokenFor = (id: number) => jwtService.sign({ sub: id });
+    const checkoutBody = {
+      nombreFacturacion: 'Cliente Pago Digital',
+      documentoFacturacion: '9988776',
+    };
+    const oldCartDate = new Date('2020-01-01T00:00:00.000Z');
+    const createDigitalSale = async (
+      customer: (typeof customers)[number],
+      details: Array<{ varianteProductoId: number; cantidad: number }>,
+    ) => {
+      const cart = await prisma.carrito.create({
+        data: {
+          usuarioId: customer.id,
+          sucursalId: branch.id,
+          detalles: { create: details },
+        },
+        include: { detalles: true },
+      });
+      await prisma.carrito.update({
+        where: { id: cart.id },
+        data: { actualizadoEn: oldCartDate },
+      });
+      const response = await request(app.getHttpServer())
+        .post('/ventas/digitales')
+        .set('Authorization', `Bearer ${tokenFor(customer.id)}`)
+        .set('Idempotency-Key', randomUUID())
+        .send(checkoutBody)
+        .expect(201);
+      return { cart, saleId: response.body.id as number };
+    };
+    const electronicPath = (saleId: number) =>
+      `/ventas/${saleId}/pagos/electronico`;
+
+    const ownerCheckout = await createDigitalSale(owner, [
+      { varianteProductoId: core.variant.id, cantidad: 2 },
+      { varianteProductoId: secondary.variant.id, cantidad: 1 },
+    ]);
+    await request(app.getHttpServer())
+      .post(electronicPath(ownerCheckout.saleId))
+      .set('Authorization', `Bearer ${tokenFor(owner.id)}`)
+      .send({ metodo: 'EFECTIVO' })
+      .expect(400);
+    await request(app.getHttpServer())
+      .post(electronicPath(ownerCheckout.saleId))
+      .set('Authorization', `Bearer ${tokenFor(owner.id)}`)
+      .send({ metodo: 'TARJETA', referencia: 'NO-ACEPTADA' })
+      .expect(400);
+    await request(app.getHttpServer())
+      .post(electronicPath(ownerCheckout.saleId))
+      .set('Authorization', `Bearer ${tokenFor(other.id)}`)
+      .send({ metodo: 'TARJETA' })
+      .expect(403);
+    await request(app.getHttpServer())
+      .post(electronicPath(ownerCheckout.saleId))
+      .set('Authorization', `Bearer ${tokenFor(cashier.id)}`)
+      .send({ metodo: 'QR' })
+      .expect(403);
+    await request(app.getHttpServer())
+      .post(electronicPath(999999))
+      .set('Authorization', `Bearer ${tokenFor(owner.id)}`)
+      .send({ metodo: 'QR' })
+      .expect(404);
+
+    const presencial = await prisma.venta.create({
+      data: {
+        canal: 'PRESENCIAL',
+        sucursalId: branch.id,
+        cajeroId: cashier.id,
+        nombreFacturacion: 'CONSUMIDOR FINAL',
+        documentoFacturacion: '0',
+        total: 50,
+        detalles: {
+          create: {
+            varianteProductoId: core.variant.id,
+            cantidad: 1,
+            precioUnitario: 50,
+            subtotal: 50,
+          },
+        },
+      },
+    });
+    await request(app.getHttpServer())
+      .post(electronicPath(presencial.id))
+      .set('Authorization', `Bearer ${tokenFor(owner.id)}`)
+      .send({ metodo: 'QR' })
+      .expect(409);
+
+    const cardPayment = await request(app.getHttpServer())
+      .post(electronicPath(ownerCheckout.saleId))
+      .set('Authorization', `Bearer ${tokenFor(owner.id)}`)
+      .send({ metodo: 'TARJETA' })
+      .expect(201);
+    expect(cardPayment.body).toMatchObject({
+      pago: {
+        ventaId: ownerCheckout.saleId,
+        metodo: 'TARJETA',
+        monto: 125.5,
+        montoRecibido: null,
+        cambio: null,
+        simulado: true,
+        estado: 'CONFIRMADO',
+      },
+      venta: {
+        id: ownerCheckout.saleId,
+        estado: 'PAGADA',
+        total: 125.5,
+      },
+    });
+    expect(cardPayment.body.pago.referencia).toMatch(
+      /^SIM-TARJETA-[0-9a-f-]{36}$/,
+    );
+    expect(
+      await prisma.detalleCarrito.count({
+        where: { carritoId: ownerCheckout.cart.id },
+      }),
+    ).toBe(0);
+    expect(
+      await prisma.inventario.findUniqueOrThrow({
+        where: { id: core.inventory.id },
+      }),
+    ).toMatchObject({
+      cantidadFisica: 18,
+      cantidadReservada: 1,
+      cantidadNoDisponible: 1,
+    });
+    expect(
+      await prisma.inventario.findUniqueOrThrow({
+        where: { id: secondary.inventory.id },
+      }),
+    ).toMatchObject({ cantidadFisica: 9 });
+    expect(
+      await prisma.movimientoInventario.count({
+        where: { ventaId: ownerCheckout.saleId, usuarioId: owner.id },
+      }),
+    ).toBe(2);
+    await request(app.getHttpServer())
+      .post(electronicPath(ownerCheckout.saleId))
+      .set('Authorization', `Bearer ${tokenFor(owner.id)}`)
+      .send({ metodo: 'TARJETA' })
+      .expect(409);
+
+    const modifiedCheckout = await createDigitalSale(modified, [
+      { varianteProductoId: core.variant.id, cantidad: 1 },
+    ]);
+    await prisma.detalleCarrito.update({
+      where: { id: modifiedCheckout.cart.detalles[0].id },
+      data: { cantidad: 3 },
+    });
+    const modifiedSale = await prisma.venta.findUniqueOrThrow({
+      where: { id: modifiedCheckout.saleId },
+    });
+    await prisma.carrito.update({
+      where: { id: modifiedCheckout.cart.id },
+      data: {
+        actualizadoEn: new Date(modifiedSale.fecha.getTime() + 1_000),
+      },
+    });
+    const qrPayment = await request(app.getHttpServer())
+      .post(electronicPath(modifiedCheckout.saleId))
+      .set('Authorization', `Bearer ${tokenFor(modified.id)}`)
+      .send({ metodo: 'QR' })
+      .expect(201);
+    expect(qrPayment.body.pago).toMatchObject({
+      metodo: 'QR',
+      montoRecibido: null,
+      cambio: null,
+      simulado: true,
+    });
+    expect(qrPayment.body.pago.referencia).toMatch(/^SIM-QR-[0-9a-f-]{36}$/);
+    expect(
+      await prisma.detalleCarrito.findUniqueOrThrow({
+        where: { id: modifiedCheckout.cart.detalles[0].id },
+      }),
+    ).toMatchObject({ cantidad: 3 });
+
+    const noStockCheckout = await createDigitalSale(noStock, [
+      { varianteProductoId: scarce.variant.id, cantidad: 1 },
+    ]);
+    await prisma.inventario.update({
+      where: { id: scarce.inventory.id },
+      data: { cantidadNoDisponible: 1 },
+    });
+    await request(app.getHttpServer())
+      .post(electronicPath(noStockCheckout.saleId))
+      .set('Authorization', `Bearer ${tokenFor(noStock.id)}`)
+      .send({ metodo: 'QR' })
+      .expect(409);
+    expect(
+      await prisma.venta.findUniqueOrThrow({
+        where: { id: noStockCheckout.saleId },
+      }),
+    ).toMatchObject({ estado: 'PENDIENTE_PAGO' });
+    expect(
+      await prisma.detalleCarrito.count({
+        where: { carritoId: noStockCheckout.cart.id },
+      }),
+    ).toBe(1);
+
+    const rollbackCheckout = await createDigitalSale(rollback, [
+      { varianteProductoId: rollbackStock.variant.id, cantidad: 1 },
+    ]);
+    await prisma.pago.create({
+      data: {
+        ventaId: rollbackCheckout.saleId,
+        metodo: MetodoPago.QR,
+        monto: 30,
+        referencia: `SIM-QR-${randomUUID()}`,
+        simulado: true,
+        estado: EstadoPago.CONFIRMADO,
+      },
+    });
+    const rollbackInventoryBefore = await prisma.inventario.findUniqueOrThrow({
+      where: { id: rollbackStock.inventory.id },
+    });
+    await request(app.getHttpServer())
+      .post(electronicPath(rollbackCheckout.saleId))
+      .set('Authorization', `Bearer ${tokenFor(rollback.id)}`)
+      .send({ metodo: 'QR' })
+      .expect(409);
+    expect(
+      await prisma.inventario.findUniqueOrThrow({
+        where: { id: rollbackStock.inventory.id },
+      }),
+    ).toEqual(rollbackInventoryBefore);
+    expect(
+      await prisma.movimientoInventario.count({
+        where: { ventaId: rollbackCheckout.saleId },
+      }),
+    ).toBe(0);
+    expect(
+      await prisma.detalleCarrito.count({
+        where: { carritoId: rollbackCheckout.cart.id },
+      }),
+    ).toBe(1);
+    expect(
+      await prisma.venta.findUniqueOrThrow({
+        where: { id: rollbackCheckout.saleId },
+      }),
+    ).toMatchObject({ estado: 'PENDIENTE_PAGO' });
+
+    const duplicateCheckout = await createDigitalSale(duplicate, [
+      { varianteProductoId: race.variant.id, cantidad: 1 },
+    ]);
+    const competingCheckouts = await Promise.all([
+      createDigitalSale(competitorA, [
+        { varianteProductoId: race.variant.id, cantidad: 1 },
+      ]),
+      createDigitalSale(competitorB, [
+        { varianteProductoId: race.variant.id, cantidad: 1 },
+      ]),
+    ]);
+    const duplicateResponses = await Promise.all([
+      request(app.getHttpServer())
+        .post(electronicPath(duplicateCheckout.saleId))
+        .set('Authorization', `Bearer ${tokenFor(duplicate.id)}`)
+        .send({ metodo: 'QR' }),
+      request(app.getHttpServer())
+        .post(electronicPath(duplicateCheckout.saleId))
+        .set('Authorization', `Bearer ${tokenFor(duplicate.id)}`)
+        .send({ metodo: 'QR' }),
+    ]);
+    expect(
+      duplicateResponses
+        .map(({ status }) => status)
+        .sort((left, right) => left - right),
+    ).toEqual([201, 409]);
+    expect(
+      await prisma.pago.count({
+        where: {
+          ventaId: duplicateCheckout.saleId,
+          estado: EstadoPago.CONFIRMADO,
+        },
+      }),
+    ).toBe(1);
+
+    const competingResponses = await Promise.all(
+      competingCheckouts.map((checkout, index) =>
+        request(app.getHttpServer())
+          .post(electronicPath(checkout.saleId))
+          .set(
+            'Authorization',
+            `Bearer ${tokenFor(index === 0 ? competitorA.id : competitorB.id)}`,
+          )
+          .send({ metodo: 'TARJETA' }),
+      ),
+    );
+    expect(
+      competingResponses
+        .map(({ status }) => status)
+        .sort((left, right) => left - right),
+    ).toEqual([201, 409]);
+    expect(
+      await prisma.inventario.findUniqueOrThrow({
+        where: { id: race.inventory.id },
+      }),
+    ).toMatchObject({ cantidadFisica: 0 });
+    expect(
+      await prisma.pago.count({
+        where: {
+          ventaId: { in: competingCheckouts.map(({ saleId }) => saleId) },
+          estado: EstadoPago.CONFIRMADO,
+        },
+      }),
+    ).toBe(1);
+  }, 45_000);
 
   it('migra usuarios VENDEDOR existentes a CAJERO conservando su relación', async () => {
     const legacyRole = await prisma.rol.upsert({

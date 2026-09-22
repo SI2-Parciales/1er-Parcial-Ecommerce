@@ -7,7 +7,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Prisma, TipoMovimiento } from '@prisma/client';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { isUUID } from 'class-validator';
 import { ACTOR_ROLE } from '../auth/auth.constants.js';
 import type { AuthenticatedUser } from '../auth/guards/jwt-auth.guard.js';
@@ -50,12 +50,18 @@ interface NormalizedMovementInput {
   origenUnidades: 'DISPONIBLE' | 'NO_DISPONIBLE' | null;
 }
 
+export interface SalidaVentaDetalle {
+  varianteProductoId: number;
+  cantidad: number;
+}
+
 const movementSelect = {
   id: true,
   tipo: true,
   cantidad: true,
   fecha: true,
   observacion: true,
+  ventaId: true,
   usuario: { select: { id: true, nombre: true, apellido: true } },
   varianteProducto: { select: { id: true, sku: true } },
   sucursalOrigen: { select: { id: true, nombre: true } },
@@ -178,6 +184,7 @@ export class MovimientosInventarioService {
               cantidad: normalized.cantidad,
               fecha: movement.fecha.toISOString(),
               observacion: normalized.observacion,
+              ventaId: null,
               usuario: {
                 id: actor.id,
                 nombre: actor.nombre,
@@ -212,6 +219,56 @@ export class MovimientosInventarioService {
       if (!concurrent) throw error;
       return this.resolveIdempotentResult(concurrent, requestHash);
     }
+  }
+
+  async registerSaleOutputs(
+    transaction: Prisma.TransactionClient,
+    ventaId: number,
+    usuarioId: number,
+    sucursalId: number,
+    detalles: SalidaVentaDetalle[],
+  ) {
+    const inventories = await this.inventarioService.applySaleOutput(
+      transaction,
+      sucursalId,
+      detalles,
+    );
+    const inventoryByVariant = new Map(
+      inventories.map((inventory) => [inventory.variante.id, inventory]),
+    );
+    await transaction.movimientoInventario.createMany({
+      data: detalles.map((detalle) => {
+        const request = {
+          ventaId,
+          usuarioId,
+          sucursalId,
+          varianteProductoId: detalle.varianteProductoId,
+          cantidad: detalle.cantidad,
+        };
+        const result = JSON.parse(
+          JSON.stringify({
+            ventaId,
+            inventario: inventoryByVariant.get(detalle.varianteProductoId),
+          }),
+        ) as Prisma.InputJsonObject;
+        return {
+          tipo: TipoMovimiento.VENTA,
+          cantidad: detalle.cantidad,
+          observacion: `Salida por venta #${ventaId}`,
+          usuarioId,
+          varianteProductoId: detalle.varianteProductoId,
+          sucursalOrigenId: sucursalId,
+          sucursalDestinoId: null,
+          ventaId,
+          claveIdempotencia: randomUUID(),
+          hashSolicitud: createHash('sha256')
+            .update(JSON.stringify(request))
+            .digest('hex'),
+          resultadoIdempotente: result,
+        };
+      }),
+    });
+    return inventories;
   }
 
   async findAll(
@@ -332,6 +389,10 @@ export class MovimientosInventarioService {
     };
 
     switch (normalized.tipo) {
+      case TipoMovimiento.VENTA:
+        throw new BadRequestException(
+          'Las salidas por venta solo pueden registrarse mediante el proceso de pago.',
+        );
       case TipoMovimiento.RECEPCION:
         this.requireBranchShape(normalized, false, true);
         this.rejectSpecialFields(normalized);
@@ -558,6 +619,7 @@ export class MovimientosInventarioService {
       cantidad: record.cantidad,
       fecha: record.fecha.toISOString(),
       observacion: record.observacion,
+      ventaId: record.ventaId,
       usuario: record.usuario,
       variante: record.varianteProducto,
       sucursalOrigen: record.sucursalOrigen,

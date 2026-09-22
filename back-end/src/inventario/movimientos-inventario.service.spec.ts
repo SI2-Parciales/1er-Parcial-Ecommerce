@@ -15,6 +15,7 @@ describe('MovimientosInventarioService', () => {
     $queryRaw: vi.fn(),
     movimientoInventario: {
       create: vi.fn(),
+      createMany: vi.fn(),
       update: vi.fn(),
     },
   };
@@ -34,6 +35,7 @@ describe('MovimientosInventarioService', () => {
     applyStockEntry: vi.fn(),
     applyTransfer: vi.fn(),
     applyShrinkage: vi.fn(),
+    applySaleOutput: vi.fn(),
   };
   const actor = {
     id: 20,
@@ -271,5 +273,58 @@ describe('MovimientosInventarioService', () => {
         },
       }),
     );
+  });
+
+  it('registra una salida interna por cada detalle de venta', async () => {
+    inventario.applySaleOutput.mockResolvedValue([
+      {
+        inventarioId: 3,
+        variante: { id: 15 },
+        cantidadFisica: 7,
+        cantidadReservada: 1,
+        cantidadNoDisponible: 0,
+        cantidadDisponible: 6,
+      },
+    ]);
+    transaction.movimientoInventario.createMany.mockResolvedValue({ count: 1 });
+
+    await service.registerSaleOutputs(transaction as never, 40, 20, 2, [
+      { varianteProductoId: 15, cantidad: 3 },
+    ]);
+
+    expect(inventario.applySaleOutput).toHaveBeenCalledWith(transaction, 2, [
+      { varianteProductoId: 15, cantidad: 3 },
+    ]);
+    expect(transaction.movimientoInventario.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          tipo: TipoMovimiento.VENTA,
+          cantidad: 3,
+          usuarioId: 20,
+          varianteProductoId: 15,
+          sucursalOrigenId: 2,
+          sucursalDestinoId: null,
+          ventaId: 40,
+          claveIdempotencia: expect.any(String),
+          hashSolicitud: expect.stringMatching(/^[a-f0-9]{64}$/),
+        }),
+      ],
+    });
+  });
+
+  it('impide registrar manualmente una salida por venta', async () => {
+    await expect(
+      service.create(
+        {
+          tipo: TipoMovimiento.VENTA,
+          varianteProductoId: 15,
+          cantidad: 1,
+          sucursalOrigenId: 2,
+        },
+        actor,
+        key,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });

@@ -23,9 +23,138 @@ import {
   UpdateVarianteProductoDto,
 } from './variantes.dto.js';
 
+export interface VarianteCompraReferencia {
+  varianteProductoId?: number;
+  sku?: string;
+}
+
+export interface VarianteCompra {
+  id: number;
+  sku: string;
+  precio: Prisma.Decimal;
+  producto: { id: number; nombre: string };
+  talla: { id: number; nombre: string };
+  color: { id: number; nombre: string; codigoHex: string };
+}
+
+interface VarianteCompraRow {
+  id: number;
+  sku: string;
+  estado: string;
+  productoId: number;
+  productoNombre: string;
+  productoPrecio: Prisma.Decimal;
+  productoEstado: string;
+  categoriaEstado: string;
+  tallaId: number;
+  tallaNombre: string;
+  tallaEstado: string;
+  colorId: number;
+  colorNombre: string;
+  colorCodigoHex: string;
+  colorEstado: string;
+}
+
 @Injectable()
 export class VariantesService {
   constructor(private readonly prisma: PrismaService) {}
+
+  async resolveActiveForPurchase(
+    transaction: Prisma.TransactionClient,
+    references: VarianteCompraReferencia[],
+  ): Promise<VarianteCompra[]> {
+    const ids = [
+      ...new Set(
+        references
+          .map((reference) => reference.varianteProductoId)
+          .filter((id): id is number => id !== undefined),
+      ),
+    ];
+    const skus = [
+      ...new Set(
+        references
+          .map((reference) =>
+            reference.sku === undefined
+              ? undefined
+              : normalizeSku(reference.sku),
+          )
+          .filter((sku): sku is string => sku !== undefined),
+      ),
+    ];
+    const conditions: Prisma.Sql[] = [];
+    if (ids.length > 0) {
+      conditions.push(Prisma.sql`v."id" IN (${Prisma.join(ids)})`);
+    }
+    if (skus.length > 0) {
+      conditions.push(Prisma.sql`v."sku" IN (${Prisma.join(skus)})`);
+    }
+    if (conditions.length === 0) return [];
+
+    const rows = await transaction.$queryRaw<VarianteCompraRow[]>(Prisma.sql`
+      SELECT
+        v."id" AS "id",
+        v."sku" AS "sku",
+        v."estado" AS "estado",
+        p."id" AS "productoId",
+        p."nombre" AS "productoNombre",
+        p."precio" AS "productoPrecio",
+        p."estado" AS "productoEstado",
+        cat."estado" AS "categoriaEstado",
+        t."id" AS "tallaId",
+        t."nombre" AS "tallaNombre",
+        t."estado" AS "tallaEstado",
+        c."id" AS "colorId",
+        c."nombre" AS "colorNombre",
+        c."codigo_hex" AS "colorCodigoHex",
+        c."estado" AS "colorEstado"
+      FROM "variantes_producto" AS v
+      INNER JOIN "productos" AS p ON p."id" = v."producto_id"
+      INNER JOIN "categorias" AS cat ON cat."id" = p."categoria_id"
+      INNER JOIN "tallas" AS t ON t."id" = v."talla_id"
+      INNER JOIN "colores" AS c ON c."id" = v."color_id"
+      WHERE ${Prisma.join(conditions, ' OR ')}
+      ORDER BY v."id" ASC
+      FOR SHARE OF v, p, cat, t, c
+    `);
+
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    const bySku = new Map(rows.map((row) => [row.sku, row]));
+    for (const reference of references) {
+      const row =
+        reference.varianteProductoId === undefined
+          ? bySku.get(normalizeSku(reference.sku!))
+          : byId.get(reference.varianteProductoId);
+      if (!row) {
+        throw new NotFoundException(
+          'No se encontró una de las variantes solicitadas.',
+        );
+      }
+      if (
+        row.estado !== ACTIVE_STATUS ||
+        row.productoEstado !== ACTIVE_STATUS ||
+        row.categoriaEstado !== ACTIVE_STATUS ||
+        row.tallaEstado !== ACTIVE_STATUS ||
+        row.colorEstado !== ACTIVE_STATUS
+      ) {
+        throw new ConflictException(
+          'Todas las variantes y sus catálogos deben estar activos.',
+        );
+      }
+    }
+
+    return rows.map((row) => ({
+      id: row.id,
+      sku: row.sku,
+      precio: row.productoPrecio,
+      producto: { id: row.productoId, nombre: row.productoNombre },
+      talla: { id: row.tallaId, nombre: row.tallaNombre },
+      color: {
+        id: row.colorId,
+        nombre: row.colorNombre,
+        codigoHex: row.colorCodigoHex,
+      },
+    }));
+  }
 
   async create(productoId: number, input: CreateVarianteProductoDto) {
     return this.prisma.$transaction(async (transaction) => {

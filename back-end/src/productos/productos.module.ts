@@ -8,5 +8,6 @@ import { VariantesService } from './variantes/variantes.service.js';
 @Module({
   controllers: [ProductosController, VariantesController],
   providers: [ProductosService, ProductImagesStorageService, VariantesService],
+  exports: [VariantesService],
 })
 export class ProductosModule {}

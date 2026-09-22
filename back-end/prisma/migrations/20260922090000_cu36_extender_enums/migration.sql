@@ -1,0 +1,2 @@
+ALTER TYPE "EstadoVenta" ADD VALUE 'PAGADA';
+ALTER TYPE "TipoMovimiento" ADD VALUE 'VENTA';
