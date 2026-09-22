@@ -1,0 +1,171 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TipoMovimiento {
+  RECEPCION
+  TRANSFERENCIA
+  DEVOLUCION
+  MERMA
+}
+
+model Rol {
+  id          Int       @id @default(autoincrement())
+  nombre      String    @unique
+  descripcion String
+  creadoEn    DateTime  @default(now()) @map("creado_en")
+  usuarios    Usuario[]
+
+  @@map("roles")
+}
+
+model Usuario {
+  id                    Int                    @id @default(autoincrement())
+  nombre                String
+  apellido              String
+  telefono              String
+  email                 String                 @unique
+  passwordHash          String                 @map("password_hash")
+  estado                String
+  creadoEn              DateTime               @default(now()) @map("creado_en")
+  actualizadoEn         DateTime               @default(now()) @updatedAt @map("actualizado_en")
+  rolId                 Int                    @map("rol_id")
+  rol                   Rol                    @relation(fields: [rolId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  sucursalId            Int?                   @map("sucursal_id")
+  sucursal              Sucursal?              @relation(fields: [sucursalId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  movimientosInventario MovimientoInventario[]
+
+  @@index([sucursalId])
+  @@map("usuarios")
+}
+
+model Sucursal {
+  id                 Int                    @id @default(autoincrement())
+  nombre             String
+  ubicacion          String
+  cantidadVestidores Int                    @default(0) @map("cantidad_vestidores")
+  estado             String                 @default("ACTIVO")
+  creadoEn           DateTime               @default(now()) @map("creado_en")
+  actualizadoEn      DateTime               @default(now()) @updatedAt @map("actualizado_en")
+  usuarios           Usuario[]
+  inventarios        Inventario[]
+  movimientosOrigen  MovimientoInventario[] @relation("MovimientoSucursalOrigen")
+  movimientosDestino MovimientoInventario[] @relation("MovimientoSucursalDestino")
+
+  @@map("sucursales")
+}
+
+model Categoria {
+  id          Int        @id @default(autoincrement())
+  nombre      String
+  descripcion String?
+  estado      String     @default("ACTIVO")
+  productos   Producto[]
+
+  @@map("categorias")
+}
+
+model Talla {
+  id        Int                @id @default(autoincrement())
+  nombre    String
+  estado    String             @default("ACTIVO")
+  variantes VarianteProducto[]
+
+  @@map("tallas")
+}
+
+model Color {
+  id        Int                @id @default(autoincrement())
+  nombre    String
+  codigoHex String             @map("codigo_hex")
+  estado    String             @default("ACTIVO")
+  variantes VarianteProducto[]
+
+  @@map("colores")
+}
+
+model Producto {
+  id            Int                @id @default(autoincrement())
+  nombre        String             @db.VarChar(150)
+  descripcion   String?            @db.VarChar(2000)
+  imagenUrl     String?            @map("imagen_url") @db.VarChar(2048)
+  precio        Decimal            @db.Decimal(12, 2)
+  categoriaId   Int                @map("categoria_id")
+  estado        String             @default("ACTIVO")
+  creadoEn      DateTime           @default(now()) @map("creado_en")
+  actualizadoEn DateTime           @default(now()) @updatedAt @map("actualizado_en")
+  categoria     Categoria          @relation(fields: [categoriaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  variantes     VarianteProducto[]
+
+  @@index([categoriaId])
+  @@map("productos")
+}
+
+model VarianteProducto {
+  id                    Int                    @id @default(autoincrement())
+  productoId            Int                    @map("producto_id")
+  tallaId               Int                    @map("talla_id")
+  colorId               Int                    @map("color_id")
+  sku                   String                 @unique(map: "variantes_producto_sku_key") @db.VarChar(100)
+  estado                String                 @default("ACTIVO")
+  creadoEn              DateTime               @default(now()) @map("creado_en")
+  actualizadoEn         DateTime               @default(now()) @updatedAt @map("actualizado_en")
+  producto              Producto               @relation(fields: [productoId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  talla                 Talla                  @relation(fields: [tallaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  color                 Color                  @relation(fields: [colorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  inventarios           Inventario[]
+  movimientosInventario MovimientoInventario[]
+
+  @@unique([productoId, tallaId, colorId], map: "variantes_producto_combinacion_key")
+  @@index([productoId])
+  @@index([tallaId])
+  @@index([colorId])
+  @@map("variantes_producto")
+}
+
+model Inventario {
+  id                   Int              @id @default(autoincrement())
+  sucursalId           Int              @map("sucursal_id")
+  varianteProductoId   Int              @map("variante_producto_id")
+  cantidadFisica       Int              @default(0) @map("cantidad_fisica")
+  cantidadReservada    Int              @default(0) @map("cantidad_reservada")
+  cantidadNoDisponible Int              @default(0) @map("cantidad_no_disponible")
+  actualizadoEn        DateTime         @default(now()) @updatedAt @map("actualizado_en")
+  sucursal             Sucursal         @relation(fields: [sucursalId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  varianteProducto     VarianteProducto @relation(fields: [varianteProductoId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([sucursalId, varianteProductoId], map: "inventarios_sucursal_variante_key")
+  @@index([varianteProductoId])
+  @@map("inventarios")
+}
+
+model MovimientoInventario {
+  id                   Int              @id @default(autoincrement())
+  tipo                 TipoMovimiento
+  cantidad             Int
+  fecha                DateTime         @default(now())
+  observacion          String?          @db.VarChar(500)
+  usuarioId            Int              @map("usuario_id")
+  varianteProductoId   Int              @map("variante_producto_id")
+  sucursalOrigenId     Int?             @map("sucursal_origen_id")
+  sucursalDestinoId    Int?             @map("sucursal_destino_id")
+  claveIdempotencia    String           @map("clave_idempotencia") @db.Uuid
+  hashSolicitud        String           @map("hash_solicitud") @db.Char(64)
+  resultadoIdempotente Json             @map("resultado_idempotente")
+  usuario              Usuario          @relation(fields: [usuarioId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  varianteProducto     VarianteProducto @relation(fields: [varianteProductoId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  sucursalOrigen       Sucursal?        @relation("MovimientoSucursalOrigen", fields: [sucursalOrigenId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  sucursalDestino      Sucursal?        @relation("MovimientoSucursalDestino", fields: [sucursalDestinoId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([usuarioId, claveIdempotencia], map: "movimientos_inventario_usuario_clave_key")
+  @@index([tipo, fecha, id], map: "movimientos_inventario_tipo_fecha_idx")
+  @@index([varianteProductoId, fecha, id], map: "movimientos_inventario_variante_fecha_idx")
+  @@index([sucursalOrigenId, fecha, id], map: "movimientos_inventario_origen_fecha_idx")
+  @@index([sucursalDestinoId, fecha, id], map: "movimientos_inventario_destino_fecha_idx")
+  @@map("movimientos_inventario")
+}
