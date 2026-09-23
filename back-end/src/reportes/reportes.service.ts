@@ -16,6 +16,7 @@ export interface GarmentFilterCriteria {
   targetGarments: string[];
   categoryFilter: string | null;
   exactProductName: string | null;
+  exactProductNames?: string[];
   displayLabel: string;
 }
 
@@ -1319,6 +1320,9 @@ Se auditaron **${movRows.length} movimientos de inventario** que involucraron **
 
   public extractGarmentFilter(prompt: string): GarmentFilterCriteria {
     const p = prompt.toLowerCase();
+    const targetGarments: string[] = [];
+    const exactProductNames: string[] = [];
+    const labels: string[] = [];
 
     // 1. Poleras (normal, oversize, o general)
     const hasPolera = /\b(poleras?|remeras?|camisetas?|playeras?|t-?shirts?)\b/i.test(p);
@@ -1327,137 +1331,86 @@ Se auditaron **${movRows.length} movimientos de inventario** que involucraron **
 
     if (hasPolera) {
       if (hasOversize && !hasNormal && !p.includes('ya sea') && !p.includes('cualquier')) {
-        return {
-          hasFilter: true,
-          targetGarments: ['polera oversize'],
-          categoryFilter: null,
-          exactProductName: 'Polera Oversize',
-          displayLabel: 'POLERAS OVERSIZE',
-        };
+        targetGarments.push('polera oversize');
+        exactProductNames.push('Polera Oversize');
+        labels.push('POLERAS OVERSIZE');
+      } else if (hasNormal && !hasOversize && !p.includes('ya sea') && !p.includes('cualquier')) {
+        targetGarments.push('polera');
+        exactProductNames.push('Polera');
+        labels.push('POLERAS ESTÁNDAR');
+      } else {
+        targetGarments.push('polera');
+        labels.push('POLERAS');
       }
-      if (hasNormal && !hasOversize && !p.includes('ya sea') && !p.includes('cualquier')) {
-        return {
-          hasFilter: true,
-          targetGarments: ['polera'],
-          categoryFilter: null,
-          exactProductName: 'Polera',
-          displayLabel: 'POLERAS ESTÁNDAR',
-        };
-      }
-      return {
-        hasFilter: true,
-        targetGarments: ['polera'],
-        categoryFilter: null,
-        exactProductName: null,
-        displayLabel: 'POLERAS (NORMAL Y OVERSIZE)',
-      };
     }
 
     // 2. Camisas
     if (/\b(camisas?|bluson|blusones)\b/i.test(p)) {
-      return {
-        hasFilter: true,
-        targetGarments: ['camisa'],
-        categoryFilter: null,
-        exactProductName: 'Camisa',
-        displayLabel: 'CAMISAS',
-      };
+      targetGarments.push('camisa');
+      exactProductNames.push('Camisa');
+      labels.push('CAMISAS');
     }
 
     // 3. Pantalones
     if (/\b(pantalones?|pantal[oó]n|pantalones?\s+de\s+vestir|jeans?|vaqueros?)\b/i.test(p)) {
-      return {
-        hasFilter: true,
-        targetGarments: ['pantalón', 'pantalon'],
-        categoryFilter: null,
-        exactProductName: 'Pantalón de Vestir',
-        displayLabel: 'PANTALONES DE VESTIR',
-      };
+      targetGarments.push('pantalón', 'pantalon');
+      exactProductNames.push('Pantalón de Vestir');
+      labels.push('PANTALONES');
     }
 
     // 4. Shorts
     if (/\b(shorts?|bermudas?|cortos?)\b/i.test(p)) {
-      return {
-        hasFilter: true,
-        targetGarments: ['short'],
-        categoryFilter: null,
-        exactProductName: 'Short',
-        displayLabel: 'SHORTS',
-      };
+      targetGarments.push('short', 'bermuda');
+      exactProductNames.push('Short');
+      labels.push('SHORTS');
     }
 
     // 5. Corbatas
     if (/\b(corbatas?|moño|moños|corbatines?)\b/i.test(p)) {
-      return {
-        hasFilter: true,
-        targetGarments: ['corbata'],
-        categoryFilter: null,
-        exactProductName: 'Corbata',
-        displayLabel: 'CORBATAS',
-      };
+      targetGarments.push('corbata');
+      exactProductNames.push('Corbata');
+      labels.push('CORBATAS');
     }
 
     // 6. Vestidos
     if (/\b(vestidos?)\b/i.test(p)) {
-      return {
-        hasFilter: true,
-        targetGarments: ['vestido'],
-        categoryFilter: null,
-        exactProductName: null,
-        displayLabel: 'VESTIDOS',
-      };
+      targetGarments.push('vestido');
+      labels.push('VESTIDOS');
     }
 
     // 7. Blusas
     if (/\b(blusas?)\b/i.test(p)) {
-      return {
-        hasFilter: true,
-        targetGarments: ['blusa'],
-        categoryFilter: null,
-        exactProductName: null,
-        displayLabel: 'BLUSAS',
-      };
+      targetGarments.push('blusa');
+      labels.push('BLUSAS');
     }
 
     // 8. Blazers / Chaquetas
     if (/\b(blazers?|chaquetas?|sacos?)\b/i.test(p)) {
-      return {
-        hasFilter: true,
-        targetGarments: ['blazer', 'chaqueta', 'saco'],
-        categoryFilter: null,
-        exactProductName: null,
-        displayLabel: 'BLAZERS / CHAQUETAS',
-      };
+      targetGarments.push('blazer', 'chaqueta', 'saco');
+      labels.push('BLAZERS / CHAQUETAS');
     }
 
     // 9. Categorías
+    let categoryFilter: string | null = null;
     if (/\b(deportiv[ao]s?|deporte|ropa\s+deportiva)\b/i.test(p)) {
-      return {
-        hasFilter: true,
-        targetGarments: [],
-        categoryFilter: 'deportiva',
-        exactProductName: null,
-        displayLabel: 'ROPA DEPORTIVA',
-      };
+      categoryFilter = 'deportiva';
+      labels.push('ROPA DEPORTIVA');
+    } else if (/\b(gala|formal(es)?|ropa\s+de\s+gala)\b/i.test(p)) {
+      categoryFilter = 'gala';
+      labels.push('ROPA DE GALA');
+    } else if (/\b(casual(es)?|ropa\s+casual|urbana?)\b/i.test(p)) {
+      categoryFilter = 'casual';
+      labels.push('ROPA CASUAL');
     }
 
-    if (/\b(gala|formal(es)?|ropa\s+de\s+gala)\b/i.test(p)) {
+    if (targetGarments.length > 0 || categoryFilter !== null) {
       return {
         hasFilter: true,
-        targetGarments: [],
-        categoryFilter: 'gala',
-        exactProductName: null,
-        displayLabel: 'ROPA DE GALA Y FORMAL',
-      };
-    }
-
-    if (/\b(casual(es)?|ropa\s+casual|urbana?)\b/i.test(p)) {
-      return {
-        hasFilter: true,
-        targetGarments: [],
-        categoryFilter: 'casual',
-        exactProductName: null,
-        displayLabel: 'ROPA CASUAL',
+        targetGarments,
+        categoryFilter,
+        exactProductName: exactProductNames[0] || null,
+        exactProductNames,
+        displayLabel: labels.join(' Y '),
       };
     }
 
@@ -1466,6 +1419,7 @@ Se auditaron **${movRows.length} movimientos de inventario** que involucraron **
       targetGarments: [],
       categoryFilter: null,
       exactProductName: null,
+      exactProductNames: [],
       displayLabel: 'CATÁLOGO GENERAL',
     };
   }
@@ -1475,26 +1429,37 @@ Se auditaron **${movRows.length} movimientos de inventario** que involucraron **
     const pName = productName.toLowerCase();
     const cName = (categoryName || '').toLowerCase();
 
-    // Filtro por nombre exacto de producto si se especificó estrictamente
-    if (filter.exactProductName) {
-      if (filter.exactProductName === 'Polera' && pName.includes('oversize')) {
-        return false;
-      }
-      if (filter.exactProductName === 'Polera Oversize' && !pName.includes('oversize')) {
-        return false;
-      }
+    // Filtro por nombres exactos si se especificaron
+    if (filter.exactProductNames && filter.exactProductNames.length > 0) {
+      const matchExact = filter.exactProductNames.some((exact) => {
+        if (exact === 'Polera' && pName.includes('oversize')) return false;
+        if (exact === 'Polera Oversize' && !pName.includes('oversize')) return false;
+        return pName.includes(exact.toLowerCase());
+      });
+      if (matchExact) return true;
     }
 
     // Filtro de categoría
-    if (filter.categoryFilter && !cName.includes(filter.categoryFilter)) {
-      return false;
-    }
+    const matchCategory = filter.categoryFilter ? cName.includes(filter.categoryFilter) : false;
 
-    // Filtro por palabras de prenda
-    if (filter.targetGarments.length > 0) {
-      const match = filter.targetGarments.some((tg) => pName.includes(tg));
-      if (!match) return false;
+    // Filtro por palabras de prenda (cualquiera de las prendas solicitadas debe coincidir)
+    const matchGarment = filter.targetGarments.length > 0
+      ? filter.targetGarments.some((tg) => {
+          if (tg === 'polera' && filter.exactProductNames?.includes('Polera')) {
+            return pName === 'polera' || (pName.includes('polera') && !pName.includes('oversize'));
+          }
+          if (tg === 'polera oversize' || filter.exactProductNames?.includes('Polera Oversize')) {
+            return pName.includes('oversize');
+          }
+          return pName.includes(tg);
+        })
+      : false;
+
+    if (filter.targetGarments.length > 0 && filter.categoryFilter) {
+      return matchGarment || matchCategory;
     }
+    if (filter.targetGarments.length > 0) return matchGarment;
+    if (filter.categoryFilter) return matchCategory;
 
     return true;
   }
@@ -1571,9 +1536,16 @@ Se auditaron **${movRows.length} movimientos de inventario** que involucraron **
     }
 
     // 7. Stock disponible / Existencias
+    const isStockTotal = /\b(stock\s+total|total\s+(?:de\s+)?stock|total\s+disponible)\b/i.test(p);
     const stockIdx = findIndex(/\b(stock|estock|disponible|disponibles|existencia|existencias|saldo)\b/i);
     if (stockIdx !== -1) {
-      matches.push({ key: 'disponible', header: 'STOCK DISPONIBLE', type: 'number', align: 'center', index: stockIdx });
+      matches.push({
+        key: 'disponible',
+        header: isStockTotal ? 'STOCK TOTAL' : 'STOCK DISPONIBLE',
+        type: 'number',
+        align: 'center',
+        index: stockIdx,
+      });
     }
 
     // 8. Precio Unitario
@@ -1582,8 +1554,15 @@ Se auditaron **${movRows.length} movimientos de inventario** que involucraron **
       matches.push({ key: 'precioUnitario', header: 'PRECIO (BS.)', type: 'currency', align: 'right', index: precioIdx });
     }
 
-    // 9. Total / Facturado
-    const totalIdx = findIndex(/\b(total|totales|subtotal|subtotales|monto|montos|importe|facturaci[oó]n|recaudaci[oó]n)\b/i);
+    // 9. Total Monetario / Facturado (solo si no es "stock total" o "total de stock")
+    const hasMoneyTotalWord = /\b(subtotal|subtotales|monto|montos|importe|importes|facturaci[oó]n|recaudaci[oó]n|total\s+facturad[ao]|total\s+recaudad[ao]|total\s+(?:en\s+)?bs|total\s+dinero)\b/i;
+    let totalIdx = findIndex(hasMoneyTotalWord);
+    if (totalIdx === -1 && !isStockTotal) {
+      const isStockOrUnitsContext = /\b(stock|unidades|existencias|f[ií]sico)\s+total\b/i.test(p) || /\btotal\s+(?:de\s+)?(?:stock|unidades|existencias)\b/i.test(p);
+      if (!isStockOrUnitsContext) {
+        totalIdx = findIndex(/\b(total|totales)\b/i);
+      }
+    }
     if (totalIdx !== -1) {
       matches.push({ key: 'subtotal', header: 'TOTAL (BS.)', type: 'currency', align: 'right', index: totalIdx });
     }
@@ -1633,6 +1612,7 @@ Se auditaron **${movRows.length} movimientos de inventario** que involucraron **
       /\b(con\s+(?:el\s+|la\s+|los\s+|las\s+)?(?:nombre|c[oó]digo|sku|talla|color|stock|disponible|precio|cantidad|categoria))\b/i.test(p) ||
       /\b(por\s+(?:nombre|c[oó]digo|sku|talla|color|stock|precio|cantidad))\b/i.test(p) ||
       /\b(columnas?|campos?)\s*:/i.test(p) ||
+      /\b(filas?\s+de\s+columnas?|con\s+(?:las\s+)?columnas?|solo\s+sean|s[oó]lo\s+sean|que\s+sean\s+(?:solo|s[oó]lo))\b/i.test(p) ||
       /\b(solo|solamente|unicamente|[uú]nicamente)\s+(?:el\s+|la\s+|los\s+|las\s+)?(?:nombre|c[oó]digo|sku|talla|color|stock|precio|cantidad)\b/i.test(p) ||
       /\bmostrar\s+(?:el\s+|la\s+|los\s+|las\s+)?(?:nombre|c[oó]digo|sku|talla|color|stock)\b/i.test(p);
 
@@ -1663,7 +1643,10 @@ Se auditaron **${movRows.length} movimientos de inventario** que involucraron **
       added.add(m.key);
       const existing = defaultCols.find((d) => d.key.toLowerCase() === m.key.toLowerCase());
       if (existing) {
-        result.push(existing);
+        result.push({
+          ...existing,
+          header: m.header && m.header.includes('TOTAL') ? m.header : existing.header,
+        });
       } else {
         result.push({ key: m.key, header: m.header, type: m.type, align: m.align });
       }
