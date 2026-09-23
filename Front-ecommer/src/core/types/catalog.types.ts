@@ -31,6 +31,8 @@ export interface GarmentVariant {
   price: number;
   costPrice: number;
   isActive: boolean;
+  stock?: number;
+  inventarios?: any[];
 }
 
 export interface GarmentProduct {

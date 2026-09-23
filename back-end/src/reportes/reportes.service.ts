@@ -32,14 +32,36 @@ export class ReportesService {
 
     // Determinar sucursal:
     // 1. Si el prompt menciona explícitamente una sucursal ("el plan", "central", "santa cruz", etc.), esa tiene máxima prioridad
-    // 2. Si no, si se especificó branchId en el DTO
-    // 3. Si no, si el usuario autenticado es ENCARGADO_SUCURSAL, forzar su sucursal
+    // 2. Si el prompt menciona explícitamente "todas", "global" o "consolidado", se limpia el filtro
+    // 3. Si el usuario es ADMINISTRADOR y no especificó sucursal en el prompt, se entrega consolidado general (igual que Catálogo)
+    // 4. Si el usuario es ENCARGADO_SUCURSAL, se restringe a su sucursal
     let branchFilter: string | null = null;
     const promptBranch = this.inferBranch(promptLower);
+    const isExplicitGlobal =
+      /\b(todas|todos|todas\s+las\s+sucursales|todas\s+las\s+tiendas|ambas|global|consolidad[ao]|general|cadena|completo|empresa)\b/i.test(
+        promptLower,
+      );
 
     if (promptBranch) {
       branchFilter = promptBranch;
-    } else if (dto.branchId) {
+    } else if (isExplicitGlobal) {
+      branchFilter = null;
+    } else if (user.role === 'ADMINISTRADOR') {
+      if (
+        dto.branchId &&
+        dto.branchId !== 'ALL' &&
+        dto.branchId !== 'all' &&
+        (promptLower.includes('en mi sucursal') ||
+          promptLower.includes('de mi sucursal') ||
+          promptLower.includes('en la tienda') ||
+          promptLower.includes('sucursal seleccionada'))
+      ) {
+        branchFilter = dto.branchId;
+      } else {
+        // Por defecto para administradores: visión global consistente con el catálogo
+        branchFilter = null;
+      }
+    } else if (dto.branchId && dto.branchId !== 'ALL' && dto.branchId !== 'all') {
       branchFilter = dto.branchId;
     } else if (user.role === 'ENCARGADO_SUCURSAL') {
       const dbUser = await this.prisma.usuario.findUnique({
@@ -763,6 +785,9 @@ Se procesaron **${rawItems.length} registros de venta** para el ámbito **${sucu
           const sucursales = invs.map((i: any) => i.sucursal?.nombre).filter(Boolean);
           const sucursalStr = sucursales.length > 0 ? sucursales.join(', ') : sucursalName;
 
+          const precioNum = Number(prod.precio) || 0;
+          const valorizado = Number((disponible * precioNum).toFixed(2));
+
           allStockItems.push({
             sku: v.sku,
             codigo: v.sku,
@@ -777,8 +802,10 @@ Se procesaron **${rawItems.length} registros de venta** para el ámbito **${sucu
             reservado,
             total,
             cantidad: total,
-            precio: Number(prod.precio),
-            precioUnitario: Number(prod.precio),
+            precio: precioNum,
+            precioUnitario: precioNum,
+            subtotal: valorizado,
+            totalBs: valorizado,
             estado: disponible === 0 ? 'AGOTADO' : disponible <= 3 ? 'CRÍTICO' : 'ÓPTIMO',
           });
         });
@@ -788,31 +815,31 @@ Se procesaron **${rawItems.length} registros de venta** para el ámbito **${sucu
     // Respaldo resiliente con el catálogo oficial real si la BD estuviera momentáneamente inaccesible
     if (allStockItems.length === 0) {
       const realCatalogFallback = [
-        { sku: 'POL-001', codigo: 'POL-001', prenda: 'Polera Oversize', producto: 'Polera Oversize', categoria: 'Ropa Casual', talla: 'S', color: 'Rojo intenso', sucursal: sucursalName, disponible: 23, reservado: 0, total: 23, cantidad: 23, precio: 95.0, precioUnitario: 95.0, estado: 'ÓPTIMO' },
-        { sku: 'POL-002', codigo: 'POL-002', prenda: 'Polera Oversize', producto: 'Polera Oversize', categoria: 'Ropa Casual', talla: 'S', color: 'Azul eléctrico', sucursal: sucursalName, disponible: 16, reservado: 1, total: 17, cantidad: 17, precio: 95.0, precioUnitario: 95.0, estado: 'ÓPTIMO' },
-        { sku: 'POL-003', codigo: 'POL-003', prenda: 'Polera Oversize', producto: 'Polera Oversize', categoria: 'Ropa Casual', talla: 'M', color: 'Verde menta', sucursal: sucursalName, disponible: 15, reservado: 0, total: 15, cantidad: 15, precio: 95.0, precioUnitario: 95.0, estado: 'ÓPTIMO' },
-        { sku: 'POL-004', codigo: 'POL-004', prenda: 'Polera Oversize', producto: 'Polera Oversize', categoria: 'Ropa Casual', talla: 'L', color: 'Blanco puro', sucursal: sucursalName, disponible: 20, reservado: 0, total: 20, cantidad: 20, precio: 95.0, precioUnitario: 95.0, estado: 'ÓPTIMO' },
-        { sku: 'POL-005', codigo: 'POL-005', prenda: 'Polera Oversize', producto: 'Polera Oversize', categoria: 'Ropa Casual', talla: 'XL', color: 'Negro carbón', sucursal: sucursalName, disponible: 12, reservado: 0, total: 12, cantidad: 12, precio: 95.0, precioUnitario: 95.0, estado: 'ÓPTIMO' },
-        { sku: 'PLE-001', codigo: 'PLE-001', prenda: 'Polera', producto: 'Polera', categoria: 'Ropa deportiva', talla: 'S', color: 'Rojo intenso', sucursal: sucursalName, disponible: 19, reservado: 0, total: 19, cantidad: 19, precio: 125.5, precioUnitario: 125.5, estado: 'ÓPTIMO' },
-        { sku: 'PLE-002', codigo: 'PLE-002', prenda: 'Polera', producto: 'Polera', categoria: 'Ropa deportiva', talla: 'M', color: 'Rosa fuerte', sucursal: sucursalName, disponible: 18, reservado: 0, total: 18, cantidad: 18, precio: 125.5, precioUnitario: 125.5, estado: 'ÓPTIMO' },
-        { sku: 'PLE-003', codigo: 'PLE-003', prenda: 'Polera', producto: 'Polera', categoria: 'Ropa deportiva', talla: 'L', color: 'Turquesa', sucursal: sucursalName, disponible: 20, reservado: 0, total: 20, cantidad: 20, precio: 125.5, precioUnitario: 125.5, estado: 'ÓPTIMO' },
-        { sku: 'PLE-004', codigo: 'PLE-004', prenda: 'Polera', producto: 'Polera', categoria: 'Ropa deportiva', talla: 'XL', color: 'Blanco puro', sucursal: sucursalName, disponible: 17, reservado: 0, total: 17, cantidad: 17, precio: 125.5, precioUnitario: 125.5, estado: 'ÓPTIMO' },
-        { sku: 'PLE-005', codigo: 'PLE-005', prenda: 'Polera', producto: 'Polera', categoria: 'Ropa deportiva', talla: 'XXL', color: 'Negro carbón', sucursal: sucursalName, disponible: 15, reservado: 0, total: 15, cantidad: 15, precio: 125.5, precioUnitario: 125.5, estado: 'ÓPTIMO' },
-        { sku: 'CAM-001', codigo: 'CAM-001', prenda: 'Camisa', producto: 'Camisa', categoria: 'Ropa de Gala', talla: 'S', color: 'Blanco puro suave', sucursal: sucursalName, disponible: 26, reservado: 0, total: 26, cantidad: 26, precio: 150.0, precioUnitario: 150.0, estado: 'ÓPTIMO' },
-        { sku: 'CAM-002', codigo: 'CAM-002', prenda: 'Camisa', producto: 'Camisa', categoria: 'Ropa de Gala', talla: 'M', color: 'Azul eléctrico', sucursal: sucursalName, disponible: 22, reservado: 0, total: 22, cantidad: 22, precio: 150.0, precioUnitario: 150.0, estado: 'ÓPTIMO' },
-        { sku: 'CAM-003', codigo: 'CAM-003', prenda: 'Camisa', producto: 'Camisa', categoria: 'Ropa de Gala', talla: 'L', color: 'Celeste cielo', sucursal: sucursalName, disponible: 18, reservado: 0, total: 18, cantidad: 18, precio: 150.0, precioUnitario: 150.0, estado: 'ÓPTIMO' },
-        { sku: 'CAM-004', codigo: 'CAM-004', prenda: 'Camisa', producto: 'Camisa', categoria: 'Ropa de Gala', talla: 'XL', color: 'Gris perla', sucursal: sucursalName, disponible: 15, reservado: 0, total: 15, cantidad: 15, precio: 150.0, precioUnitario: 150.0, estado: 'ÓPTIMO' },
-        { sku: 'CAM-005', codigo: 'CAM-005', prenda: 'Camisa', producto: 'Camisa', categoria: 'Ropa de Gala', talla: 'XXL', color: 'Beige arena', sucursal: sucursalName, disponible: 10, reservado: 0, total: 10, cantidad: 10, precio: 150.0, precioUnitario: 150.0, estado: 'ÓPTIMO' },
-        { sku: 'PAN-001', codigo: 'PAN-001', prenda: 'Pantalón de Vestir', producto: 'Pantalón de Vestir', categoria: 'Ropa de Gala', talla: 'S', color: 'Negro carbón', sucursal: sucursalName, disponible: 20, reservado: 0, total: 20, cantidad: 20, precio: 170.0, precioUnitario: 170.0, estado: 'ÓPTIMO' },
-        { sku: 'PAN-002', codigo: 'PAN-002', prenda: 'Pantalón de Vestir', producto: 'Pantalón de Vestir', categoria: 'Ropa de Gala', talla: 'M', color: 'Verde esmeralda', sucursal: sucursalName, disponible: 14, reservado: 0, total: 14, cantidad: 14, precio: 170.0, precioUnitario: 170.0, estado: 'ÓPTIMO' },
-        { sku: 'PAN-003', codigo: 'PAN-003', prenda: 'Pantalón de Vestir', producto: 'Pantalón de Vestir', categoria: 'Ropa de Gala', talla: 'L', color: 'Azul noche', sucursal: sucursalName, disponible: 18, reservado: 0, total: 18, cantidad: 18, precio: 170.0, precioUnitario: 170.0, estado: 'ÓPTIMO' },
-        { sku: 'PAN-004', codigo: 'PAN-004', prenda: 'Pantalón de Vestir', producto: 'Pantalón de Vestir', categoria: 'Ropa de Gala', talla: 'XL', color: 'Plomo grafito', sucursal: sucursalName, disponible: 12, reservado: 0, total: 12, cantidad: 12, precio: 170.0, precioUnitario: 170.0, estado: 'ÓPTIMO' },
-        { sku: 'COR-001', codigo: 'COR-001', prenda: 'Corbata', producto: 'Corbata', categoria: 'Ropa de Gala', talla: 'Talla única de Caballero', color: 'Rojo intenso', sucursal: sucursalName, disponible: 48, reservado: 0, total: 48, cantidad: 48, precio: 70.0, precioUnitario: 70.0, estado: 'ÓPTIMO' },
-        { sku: 'COR-003', codigo: 'COR-003', prenda: 'Corbata', producto: 'Corbata', categoria: 'Ropa de Gala', talla: 'Talla única de Caballero', color: 'Morado intenso', sucursal: sucursalName, disponible: 17, reservado: 0, total: 17, cantidad: 17, precio: 70.0, precioUnitario: 70.0, estado: 'ÓPTIMO' },
-        { sku: 'SHO-001', codigo: 'SHO-001', prenda: 'Short', producto: 'Short', categoria: 'Ropa deportiva', talla: 'S', color: 'Rojo intenso', sucursal: sucursalName, disponible: 25, reservado: 0, total: 25, cantidad: 25, precio: 95.5, precioUnitario: 95.5, estado: 'ÓPTIMO' },
-        { sku: 'SHO-002', codigo: 'SHO-002', prenda: 'Short', producto: 'Short', categoria: 'Ropa deportiva', talla: 'S', color: 'Azul eléctrico', sucursal: sucursalName, disponible: 23, reservado: 0, total: 23, cantidad: 23, precio: 95.5, precioUnitario: 95.5, estado: 'ÓPTIMO' },
-        { sku: 'SHO-003', codigo: 'SHO-003', prenda: 'Short', producto: 'Short', categoria: 'Ropa deportiva', talla: 'M', color: 'Verde bosque', sucursal: sucursalName, disponible: 19, reservado: 0, total: 19, cantidad: 19, precio: 95.5, precioUnitario: 95.5, estado: 'ÓPTIMO' },
-        { sku: 'SHO-004', codigo: 'SHO-004', prenda: 'Short', producto: 'Short', categoria: 'Ropa deportiva', talla: 'L', color: 'Negro carbón', sucursal: sucursalName, disponible: 21, reservado: 0, total: 21, cantidad: 21, precio: 95.5, precioUnitario: 95.5, estado: 'ÓPTIMO' },
+        { sku: 'POL-001', codigo: 'POL-001', prenda: 'Polera Oversize', producto: 'Polera Oversize', categoria: 'Ropa Casual', talla: 'S', color: 'Rojo intenso', sucursal: sucursalName, disponible: 23, reservado: 0, total: 23, cantidad: 23, precio: 95.0, precioUnitario: 95.0, subtotal: 2185.0, estado: 'ÓPTIMO' },
+        { sku: 'POL-002', codigo: 'POL-002', prenda: 'Polera Oversize', producto: 'Polera Oversize', categoria: 'Ropa Casual', talla: 'S', color: 'Azul eléctrico', sucursal: sucursalName, disponible: 16, reservado: 1, total: 17, cantidad: 17, precio: 95.0, precioUnitario: 95.0, subtotal: 1520.0, estado: 'ÓPTIMO' },
+        { sku: 'POL-003', codigo: 'POL-003', prenda: 'Polera Oversize', producto: 'Polera Oversize', categoria: 'Ropa Casual', talla: 'M', color: 'Verde menta', sucursal: sucursalName, disponible: 15, reservado: 0, total: 15, cantidad: 15, precio: 95.0, precioUnitario: 95.0, subtotal: 1425.0, estado: 'ÓPTIMO' },
+        { sku: 'POL-004', codigo: 'POL-004', prenda: 'Polera Oversize', producto: 'Polera Oversize', categoria: 'Ropa Casual', talla: 'L', color: 'Blanco puro', sucursal: sucursalName, disponible: 20, reservado: 0, total: 20, cantidad: 20, precio: 95.0, precioUnitario: 95.0, subtotal: 1900.0, estado: 'ÓPTIMO' },
+        { sku: 'POL-005', codigo: 'POL-005', prenda: 'Polera Oversize', producto: 'Polera Oversize', categoria: 'Ropa Casual', talla: 'XL', color: 'Negro carbón', sucursal: sucursalName, disponible: 12, reservado: 0, total: 12, cantidad: 12, precio: 95.0, precioUnitario: 95.0, subtotal: 1140.0, estado: 'ÓPTIMO' },
+        { sku: 'PLE-001', codigo: 'PLE-001', prenda: 'Polera', producto: 'Polera', categoria: 'Ropa deportiva', talla: 'S', color: 'Rojo intenso', sucursal: sucursalName, disponible: 19, reservado: 0, total: 19, cantidad: 19, precio: 125.5, precioUnitario: 125.5, subtotal: 2384.5, estado: 'ÓPTIMO' },
+        { sku: 'PLE-002', codigo: 'PLE-002', prenda: 'Polera', producto: 'Polera', categoria: 'Ropa deportiva', talla: 'M', color: 'Rosa fuerte', sucursal: sucursalName, disponible: 18, reservado: 0, total: 18, cantidad: 18, precio: 125.5, precioUnitario: 125.5, subtotal: 2259.0, estado: 'ÓPTIMO' },
+        { sku: 'PLE-003', codigo: 'PLE-003', prenda: 'Polera', producto: 'Polera', categoria: 'Ropa deportiva', talla: 'L', color: 'Turquesa', sucursal: sucursalName, disponible: 20, reservado: 0, total: 20, cantidad: 20, precio: 125.5, precioUnitario: 125.5, subtotal: 2510.0, estado: 'ÓPTIMO' },
+        { sku: 'PLE-004', codigo: 'PLE-004', prenda: 'Polera', producto: 'Polera', categoria: 'Ropa deportiva', talla: 'XL', color: 'Blanco puro', sucursal: sucursalName, disponible: 17, reservado: 0, total: 17, cantidad: 17, precio: 125.5, precioUnitario: 125.5, subtotal: 2133.5, estado: 'ÓPTIMO' },
+        { sku: 'PLE-005', codigo: 'PLE-005', prenda: 'Polera', producto: 'Polera', categoria: 'Ropa deportiva', talla: 'XXL', color: 'Negro carbón', sucursal: sucursalName, disponible: 15, reservado: 0, total: 15, cantidad: 15, precio: 125.5, precioUnitario: 125.5, subtotal: 1882.5, estado: 'ÓPTIMO' },
+        { sku: 'CAM-001', codigo: 'CAM-001', prenda: 'Camisa', producto: 'Camisa', categoria: 'Ropa de Gala', talla: 'S', color: 'Blanco puro suave', sucursal: sucursalName, disponible: 26, reservado: 0, total: 26, cantidad: 26, precio: 150.0, precioUnitario: 150.0, subtotal: 3900.0, estado: 'ÓPTIMO' },
+        { sku: 'CAM-002', codigo: 'CAM-002', prenda: 'Camisa', producto: 'Camisa', categoria: 'Ropa de Gala', talla: 'M', color: 'Azul eléctrico', sucursal: sucursalName, disponible: 22, reservado: 0, total: 22, cantidad: 22, precio: 150.0, precioUnitario: 150.0, subtotal: 3300.0, estado: 'ÓPTIMO' },
+        { sku: 'CAM-003', codigo: 'CAM-003', prenda: 'Camisa', producto: 'Camisa', categoria: 'Ropa de Gala', talla: 'L', color: 'Celeste cielo', sucursal: sucursalName, disponible: 18, reservado: 0, total: 18, cantidad: 18, precio: 150.0, precioUnitario: 150.0, subtotal: 2700.0, estado: 'ÓPTIMO' },
+        { sku: 'CAM-004', codigo: 'CAM-004', prenda: 'Camisa', producto: 'Camisa', categoria: 'Ropa de Gala', talla: 'XL', color: 'Gris perla', sucursal: sucursalName, disponible: 15, reservado: 0, total: 15, cantidad: 15, precio: 150.0, precioUnitario: 150.0, subtotal: 2250.0, estado: 'ÓPTIMO' },
+        { sku: 'CAM-005', codigo: 'CAM-005', prenda: 'Camisa', producto: 'Camisa', categoria: 'Ropa de Gala', talla: 'XXL', color: 'Beige arena', sucursal: sucursalName, disponible: 10, reservado: 0, total: 10, cantidad: 10, precio: 150.0, precioUnitario: 150.0, subtotal: 1500.0, estado: 'ÓPTIMO' },
+        { sku: 'PAN-001', codigo: 'PAN-001', prenda: 'Pantalón de Vestir', producto: 'Pantalón de Vestir', categoria: 'Ropa de Gala', talla: 'S', color: 'Negro carbón', sucursal: sucursalName, disponible: 20, reservado: 0, total: 20, cantidad: 20, precio: 170.0, precioUnitario: 170.0, subtotal: 3400.0, estado: 'ÓPTIMO' },
+        { sku: 'PAN-002', codigo: 'PAN-002', prenda: 'Pantalón de Vestir', producto: 'Pantalón de Vestir', categoria: 'Ropa de Gala', talla: 'M', color: 'Verde esmeralda', sucursal: sucursalName, disponible: 14, reservado: 0, total: 14, cantidad: 14, precio: 170.0, precioUnitario: 170.0, subtotal: 2380.0, estado: 'ÓPTIMO' },
+        { sku: 'PAN-003', codigo: 'PAN-003', prenda: 'Pantalón de Vestir', producto: 'Pantalón de Vestir', categoria: 'Ropa de Gala', talla: 'L', color: 'Azul noche', sucursal: sucursalName, disponible: 18, reservado: 0, total: 18, cantidad: 18, precio: 170.0, precioUnitario: 170.0, subtotal: 3060.0, estado: 'ÓPTIMO' },
+        { sku: 'PAN-004', codigo: 'PAN-004', prenda: 'Pantalón de Vestir', producto: 'Pantalón de Vestir', categoria: 'Ropa de Gala', talla: 'XL', color: 'Plomo grafito', sucursal: sucursalName, disponible: 12, reservado: 0, total: 12, cantidad: 12, precio: 170.0, precioUnitario: 170.0, subtotal: 2040.0, estado: 'ÓPTIMO' },
+        { sku: 'COR-001', codigo: 'COR-001', prenda: 'Corbata', producto: 'Corbata', categoria: 'Ropa de Gala', talla: 'Talla única de Caballero', color: 'Rojo intenso', sucursal: sucursalName, disponible: 48, reservado: 0, total: 48, cantidad: 48, precio: 70.0, precioUnitario: 70.0, subtotal: 3360.0, estado: 'ÓPTIMO' },
+        { sku: 'COR-003', codigo: 'COR-003', prenda: 'Corbata', producto: 'Corbata', categoria: 'Ropa de Gala', talla: 'Talla única de Caballero', color: 'Morado intenso', sucursal: sucursalName, disponible: 17, reservado: 0, total: 17, cantidad: 17, precio: 70.0, precioUnitario: 70.0, subtotal: 1190.0, estado: 'ÓPTIMO' },
+        { sku: 'SHO-001', codigo: 'SHO-001', prenda: 'Short', producto: 'Short', categoria: 'Ropa deportiva', talla: 'S', color: 'Rojo intenso', sucursal: sucursalName, disponible: 25, reservado: 0, total: 25, cantidad: 25, precio: 95.5, precioUnitario: 95.5, subtotal: 2387.5, estado: 'ÓPTIMO' },
+        { sku: 'SHO-002', codigo: 'SHO-002', prenda: 'Short', producto: 'Short', categoria: 'Ropa deportiva', talla: 'S', color: 'Azul eléctrico', sucursal: sucursalName, disponible: 23, reservado: 0, total: 23, cantidad: 23, precio: 95.5, precioUnitario: 95.5, subtotal: 2196.5, estado: 'ÓPTIMO' },
+        { sku: 'SHO-003', codigo: 'SHO-003', prenda: 'Short', producto: 'Short', categoria: 'Ropa deportiva', talla: 'M', color: 'Verde bosque', sucursal: sucursalName, disponible: 19, reservado: 0, total: 19, cantidad: 19, precio: 95.5, precioUnitario: 95.5, subtotal: 1814.5, estado: 'ÓPTIMO' },
+        { sku: 'SHO-004', codigo: 'SHO-004', prenda: 'Short', producto: 'Short', categoria: 'Ropa deportiva', talla: 'L', color: 'Negro carbón', sucursal: sucursalName, disponible: 21, reservado: 0, total: 21, cantidad: 21, precio: 95.5, precioUnitario: 95.5, subtotal: 2005.5, estado: 'ÓPTIMO' },
       ];
 
       const seedFiltered = garmentFilter.hasFilter
@@ -862,11 +889,17 @@ Se procesaron **${rawItems.length} registros de venta** para el ámbito **${sucu
           if (col.key === 'cantidad') val = item.cantidad;
           else if (col.key === 'disponible' || col.key === 'stock') val = item.disponible;
           else if (col.key === 'precio' || col.key === 'precioUnitario') val = item.precio;
-          else if (col.key === 'subtotal' || col.key === 'total') val = item.total;
-          else if (col.key === 'prenda' || col.key === 'producto') val = item.prenda;
+          else if (col.key === 'subtotal' || col.key === 'totalBs') {
+            val = item.subtotal !== undefined ? item.subtotal : Number((item.disponible * item.precio).toFixed(2));
+          } else if (col.key === 'total') {
+            val = col.type === 'currency' || col.header.includes('(BS.)')
+              ? (item.subtotal !== undefined ? item.subtotal : Number((item.disponible * item.precio).toFixed(2)))
+              : item.total;
+          } else if (col.key === 'prenda' || col.key === 'producto') val = item.prenda;
           else if (col.key === 'talla') val = item.talla;
           else if (col.key === 'color') val = item.color;
           else if (col.key === 'sku' || col.key === 'codigo') val = item.sku;
+          else if (col.key === 'sucursal') val = item.sucursal;
         }
         row[col.key] = val !== undefined ? val : '-';
       });
@@ -877,6 +910,10 @@ Se procesaron **${rawItems.length} registros de venta** para el ámbito **${sucu
     const sumDisponible = filtered.reduce((acc, curr) => acc + (curr.disponible || 0), 0);
     const sumReservado = filtered.reduce((acc, curr) => acc + (curr.reservado || 0), 0);
     const sumTotal = filtered.reduce((acc, curr) => acc + (curr.total || 0), 0);
+    const sumValorizado = filtered.reduce(
+      (acc, curr) => acc + (curr.subtotal !== undefined ? curr.subtotal : (curr.disponible * curr.precio) || 0),
+      0,
+    );
     const countCriticos = filtered.filter((i) => i.estado === 'CRÍTICO' || i.estado === 'AGOTADO').length;
 
     const totales: Record<string, string | number> = {};
@@ -884,8 +921,10 @@ Se procesaron **${rawItems.length} registros de venta** para el ámbito **${sucu
       if (col.key === 'disponible' || col.key === 'stock') totales[col.key] = sumDisponible;
       else if (col.key === 'cantidad') totales[col.key] = sumCantidad;
       else if (col.key === 'reservado') totales[col.key] = sumReservado;
-      else if (col.key === 'total') totales[col.key] = sumTotal;
-      else if (col.key === requestedColumns[0].key) totales[col.key] = 'TOTAL EXISTENCIAS:';
+      else if (col.key === 'subtotal' || col.key === 'totalBs') totales[col.key] = sumValorizado;
+      else if (col.key === 'total') {
+        totales[col.key] = col.type === 'currency' || col.header.includes('(BS.)') ? sumValorizado : sumTotal;
+      } else if (col.key === requestedColumns[0].key) totales[col.key] = 'TOTAL EXISTENCIAS:';
     });
 
     const garmentSubject = garmentFilter.hasFilter ? garmentFilter.displayLabel : '';
@@ -917,6 +956,10 @@ Se procesaron **${rawItems.length} registros de venta** para el ámbito **${sucu
       ? `INFORME DE AUDITORÍA: EXISTENCIAS CRÍTICAS${garmentTitle}`
       : `INFORME EJECUTIVO: MATRIZ DE INVENTARIO Y DISPONIBILIDAD${garmentTitle}`;
 
+    const scopeNotice = branchFilter
+      ? `*(Nota: Datos específicos de ${sucursalName})*`
+      : `*(Consolidado general de toda la cadena: Central y Plan 3000)*`;
+
     return {
       queryId: `qry-${Date.now()}`,
       codigoReporte: reportCode,
@@ -926,11 +969,12 @@ Se procesaron **${rawItems.length} registros de venta** para el ámbito **${sucu
       solicitante: user.nombre || 'Jefatura de Operaciones',
       kpis,
       summaryMarkdown: `### ◈ Diagnóstico de Inventario: ${garmentSubject || 'Existencias Físicas'}
-Auditoría completada para **${sucursalName}**. Se analizaron **${filtered.length} variantes** ${garmentSubject ? `correspondientes a **${garmentSubject}**` : 'en catálogo'}.
+Auditoría completada para **${sucursalName}** ${scopeNotice}. Se analizaron **${filtered.length} variantes** ${garmentSubject ? `correspondientes a **${garmentSubject}**` : 'en catálogo'}.
 
 * **Variantes en riesgo de quiebre:** Se detectaron **${countCriticos} ítems** por debajo de su umbral mínimo de seguridad.
 * **Saldo consolidado disponible:** **${sumDisponible} unidades** listas en perchero comercial.
-* **Prendas bajo reserva:** **${sumReservado} unidades** retenidas en vestidores y probadores físicos.`,
+* **Prendas bajo reserva:** **${sumReservado} unidades** retenidas en vestidores y probadores físicos.
+* **Valorización económica en almacén:** **Bs. ${sumValorizado.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}**.`,
       tabularData,
       columns: requestedColumns,
       totales,

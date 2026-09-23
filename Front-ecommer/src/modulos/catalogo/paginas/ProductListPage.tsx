@@ -16,7 +16,7 @@ import { cn } from '@shared/lib/utils';
 const columnHelper = createColumnHelper<GarmentProduct>();
 
 export function ProductListPage() {
- const { hasRole } = useAuthStore();
+ const { hasRole, activeBranchId } = useAuthStore();
  const isAdmin = hasRole(['ADMIN']);
  
  const [search, setSearch] = React.useState('');
@@ -25,6 +25,18 @@ export function ProductListPage() {
  queryKey: ['catalog', 'products', { search }],
  queryFn: () => catalogService.getProducts({ search, page: 1, pageSize: 50 }),
  });
+
+ const targetSucursalId = React.useMemo(() => {
+   if (!activeBranchId) return null;
+   const num = parseInt(String(activeBranchId).replace(/\D/g, ''), 10);
+   return isNaN(num) ? null : num;
+ }, [activeBranchId]);
+
+ const branchHeaderLabel = React.useMemo(() => {
+   if (targetSucursalId === 1) return 'Stock Central';
+   if (targetSucursalId === 2) return 'Stock Plan 3000';
+   return 'Stock Total';
+ }, [targetSucursalId]);
 
  const columns = React.useMemo(() => [
  columnHelper.accessor('name', {
@@ -49,11 +61,61 @@ export function ProductListPage() {
  }),
  columnHelper.accessor('basePrice', {
  header: 'Precio Base',
- cell: info => <span className="text-sm font-medium">${info.getValue().toFixed(2)}</span>,
+ cell: info => <span className="text-sm font-medium">Bs. {info.getValue().toFixed(2)}</span>,
  }),
  columnHelper.accessor('variants', {
  header: 'Variantes',
  cell: info => <span className="text-sm text-gray-500">{info.getValue().length} vars</span>,
+ }),
+ columnHelper.display({
+ id: 'stock',
+ header: branchHeaderLabel,
+ cell: (info) => {
+   const vars = info.row.original.variants || [];
+
+   // Total consolidado nacional
+   const totalGlobalStock = vars.reduce((acc: number, v: any) => {
+     if (Array.isArray(v.inventarios) && v.inventarios.length > 0) {
+       return acc + v.inventarios.reduce((sum: number, inv: any) => sum + (inv.cantidadFisica || 0), 0);
+     }
+     return acc + (v.stock || 0);
+   }, 0);
+
+   // Si hay una sucursal activa seleccionada
+   if (targetSucursalId !== null) {
+     const branchStock = vars.reduce((acc: number, v: any) => {
+       if (Array.isArray(v.inventarios) && v.inventarios.length > 0) {
+         const invMatch = v.inventarios.find(
+           (inv: any) => inv.sucursalId === targetSucursalId || inv.branchId === activeBranchId
+         );
+         return acc + (invMatch ? (invMatch.cantidadFisica || 0) : 0);
+       }
+       return acc + (v.stock || 0);
+     }, 0);
+
+     return (
+       <div className="flex flex-col">
+         <span className="font-semibold text-sm text-blue-600">
+           {branchStock} uds.
+         </span>
+         <span className="text-[11px] text-gray-400">
+           ({totalGlobalStock} uds. global)
+         </span>
+       </div>
+     );
+   }
+
+   return (
+     <div className="flex flex-col">
+       <span className="font-semibold text-sm text-blue-600">
+         {totalGlobalStock} uds.
+       </span>
+       <span className="text-[11px] text-gray-400">
+         (Consolidado nacional)
+       </span>
+     </div>
+   );
+ },
  }),
  columnHelper.accessor('isActive', {
  header: 'Estado',
@@ -82,7 +144,7 @@ export function ProductListPage() {
  </div>
  ),
  }),
- ], [isAdmin]);
+ ], [isAdmin, targetSucursalId, branchHeaderLabel, activeBranchId]);
 
  const table = useReactTable({
  data: data?.data || [],

@@ -18,25 +18,33 @@ const mapBackendProduct = (p: any): GarmentProduct => {
         'https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?w=500&auto=format&fit=crop&q=60',
       ];
 
-  const variants = (p.variantes || []).map((v: any) => ({
-    id: String(v.id),
-    garmentId: String(p.id),
-    sku: v.sku || `SKU-${v.id}`,
-    barcode: `777000${v.id}`,
-    size: {
-      id: String(v.talla?.id || '1'),
-      name: v.talla?.nombre || 'M',
-      orderIndex: v.talla?.id || 1,
-    },
-    color: {
-      id: String(v.color?.id || '1'),
-      name: v.color?.nombre || 'Predeterminado',
-      hexCode: v.color?.codigoHex || '#333333',
-    },
-    price: Number(p.precio) || 0,
-    costPrice: Number(p.precio) * 0.6 || 0,
-    isActive: v.estado === 'ACTIVO',
-  }));
+  const variants = (p.variantes || []).map((v: any) => {
+    const stockTotal = (v.inventarios || []).reduce(
+      (acc: number, inv: any) => acc + (inv.cantidadFisica || 0),
+      0
+    );
+    return {
+      id: String(v.id),
+      garmentId: String(p.id),
+      sku: v.sku || `SKU-${v.id}`,
+      barcode: `777000${v.id}`,
+      size: {
+        id: String(v.talla?.id || '1'),
+        name: v.talla?.nombre || 'M',
+        orderIndex: v.talla?.id || 1,
+      },
+      color: {
+        id: String(v.color?.id || '1'),
+        name: v.color?.nombre || 'Predeterminado',
+        hexCode: v.color?.codigoHex || '#333333',
+      },
+      price: Number(p.precio) || 0,
+      costPrice: Number(p.precio) * 0.6 || 0,
+      isActive: v.estado === 'ACTIVO',
+      stock: stockTotal,
+      inventarios: v.inventarios || [],
+    };
+  });
 
   return {
     id: String(p.id),

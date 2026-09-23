@@ -9,6 +9,7 @@ import {
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '@modulos/autenticacion/almacen/auth.store';
 import { mockDb } from '@core/mock/mock-db';
+import { inventoryService } from '@modulos/inventario/servicios/inventory.service';
 
 export const BranchDashboardPage: React.FC = () => {
   const { activeBranchId, user } = useAuthStore();
@@ -27,7 +28,7 @@ export const BranchDashboardPage: React.FC = () => {
 
   const { data: branchStock = { data: [] } } = useQuery({
     queryKey: ['branch-inventory-stats', branchId],
-    queryFn: () => mockDb.getStock(branchId),
+    queryFn: () => inventoryService.getStock(branchId, {}),
   });
 
   if (isLoading || !kpis) {

@@ -16,6 +16,7 @@ import {
  Package
 } from 'lucide-react';
 import { mockDb } from '@core/mock/mock-db';
+import { catalogService } from '../servicios/catalog.service';
 import type { ProviderItem, GarmentProduct } from '@core/types';
 
 export const ProvidersManagementPage: React.FC = () => {
@@ -41,7 +42,7 @@ export const ProvidersManagementPage: React.FC = () => {
 
  const { data: products } = useQuery({
  queryKey: ['products-all'],
- queryFn: () => mockDb.getProducts(),
+ queryFn: () => catalogService.getProducts({ page: 1, pageSize: 100 }),
  });
 
  const createMutation = useMutation({
