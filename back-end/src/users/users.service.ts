@@ -6,9 +6,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import * as argon2 from 'argon2';
 import { ACTOR_ROLE } from '../auth/auth.constants.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { ListUsersQueryDto, UpdateUserDto } from './users.dto.js';
+import { CreateUserDto, ListUsersQueryDto, UpdateUserDto } from './users.dto.js';
 
 const ACTIVE_STATUS = 'ACTIVO';
 const INACTIVE_STATUS = 'INACTIVO';
@@ -180,6 +181,59 @@ export class UsersService {
       where: { email },
       include: { rol: true },
     });
+  }
+
+  async createUser(dto: CreateUserDto) {
+    const email = dto.email.trim().toLowerCase();
+    const existing = await this.findByEmail(email);
+    if (existing) {
+      throw new ConflictException('El correo electrónico ya está registrado.');
+    }
+
+    const role = await this.prisma.rol.findUnique({
+      where: { id: dto.rolId },
+    });
+    if (!role) {
+      throw new NotFoundException('El rol especificado no existe.');
+    }
+
+    if (dto.sucursalId) {
+      const sucursal = await this.prisma.sucursal.findUnique({
+        where: { id: dto.sucursalId },
+      });
+      if (!sucursal) {
+        throw new NotFoundException('La sucursal especificada no existe.');
+      }
+    }
+
+    const passwordHash = await argon2.hash(dto.password, {
+      type: argon2.argon2id,
+    });
+
+    const user = await this.prisma.usuario.create({
+      data: {
+        nombre: dto.nombre.trim(),
+        apellido: dto.apellido.trim(),
+        telefono: dto.telefono.trim(),
+        email,
+        passwordHash,
+        rolId: dto.rolId,
+        sucursalId: dto.sucursalId ?? null,
+        estado: dto.estado || ACTIVE_STATUS,
+      },
+      select: {
+        id: true,
+        nombre: true,
+        apellido: true,
+        telefono: true,
+        email: true,
+        estado: true,
+        sucursalId: true,
+        rol: { select: { id: true, nombre: true, descripcion: true } },
+      },
+    });
+
+    return user;
   }
 
   create(data: CreateUserInput) {

@@ -24,6 +24,7 @@ import {
 } from '@nestjs/swagger';
 import { ACTOR_ROLE } from '../auth/auth.constants.js';
 import { MinRole } from '../auth/decorators/min-role.decorator.js';
+import { OptionalAuth } from '../auth/decorators/optional-auth.decorator.js';
 import {
   ColorListResponseDto,
   ColorResponseDto,
@@ -46,11 +47,11 @@ import { ColoresService } from './colores.service.js';
   description: 'El identificador, consulta o datos enviados no son válidos.',
 })
 @Controller('colores')
-@MinRole(ACTOR_ROLE.ADMINISTRADOR)
 export class ColoresController {
   constructor(private readonly coloresService: ColoresService) {}
 
   @Post()
+  @MinRole(ACTOR_ROLE.ADMINISTRADOR)
   @ApiOperation({ summary: 'Crear un color' })
   @ApiCreatedResponse({ description: 'Color creado.', type: ColorResponseDto })
   @ApiConflictResponse({ description: 'Ya existe un color con ese nombre.' })
@@ -59,6 +60,7 @@ export class ColoresController {
   }
 
   @Get()
+  @OptionalAuth()
   @ApiOperation({ summary: 'Listar colores activos con paginación' })
   @ApiOkResponse({
     description: 'Colores y metadatos de paginación.',
@@ -69,6 +71,7 @@ export class ColoresController {
   }
 
   @Get(':id')
+  @OptionalAuth()
   @ApiOperation({ summary: 'Consultar un color, incluso si está inactivo' })
   @ApiParam({ name: 'id', example: 1 })
   @ApiOkResponse({ description: 'Color encontrado.', type: ColorResponseDto })
@@ -78,6 +81,7 @@ export class ColoresController {
   }
 
   @Patch(':id')
+  @MinRole(ACTOR_ROLE.ADMINISTRADOR)
   @ApiOperation({ summary: 'Actualizar o reactivar un color' })
   @ApiParam({ name: 'id', example: 1 })
   @ApiOkResponse({ description: 'Color actualizado.', type: ColorResponseDto })
@@ -88,7 +92,8 @@ export class ColoresController {
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Desactivar un color sin eliminarlo' })
+  @MinRole(ACTOR_ROLE.ADMINISTRADOR)
+  @ApiOperation({ summary: 'Desactivar un color sin eliminarla' })
   @ApiParam({ name: 'id', example: 1 })
   @ApiOkResponse({
     description: 'Color marcado como INACTIVO.',

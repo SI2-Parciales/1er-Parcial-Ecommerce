@@ -63,14 +63,95 @@ export const inventoryService = {
   },
 
   async createAdjustment(payload: StockAdjustmentValues): Promise<BranchStockItem> {
+    try {
+      const branchIdNum = parseInt(payload.branchId, 10);
+      const variantIdNum = parseInt(payload.variantId, 10);
+      if (!isNaN(branchIdNum) && !isNaN(variantIdNum)) {
+        const isMerma = payload.reason === 'MERMA_DANIO' || payload.reason === 'DISCREPANCIA_AUDITORIA';
+        const tipo = isMerma ? 'MERMA' : 'RECEPCION';
+        
+        await apiClient.post(
+          '/inventario/movimientos',
+          {
+            tipo,
+            varianteProductoId: variantIdNum,
+            cantidad: Math.max(1, payload.newQuantity),
+            sucursalOrigenId: branchIdNum,
+            observacion: `[${payload.reason}] ${payload.comment}`,
+            ...(tipo === 'MERMA' ? { origenUnidades: 'DISPONIBLE' } : {}),
+          },
+          {
+            headers: {
+              'Idempotency-Key': crypto.randomUUID(),
+            },
+          },
+        );
+      }
+    } catch (err) {
+      console.warn('Error registrando ajuste en backend /inventario/movimientos, aplicando en mock local:', err);
+    }
     return mockDb.createAdjustment(payload);
   },
 
   async createTransfer(payload: StockTransferPayload): Promise<StockTransfer> {
+    try {
+      const originId = parseInt(payload.originBranchId, 10);
+      const destId = parseInt(payload.destinationBranchId, 10);
+      if (!isNaN(originId) && !isNaN(destId)) {
+        for (const item of payload.items) {
+          const variantId = parseInt(item.variantId, 10);
+          if (!isNaN(variantId) && item.quantity > 0) {
+            await apiClient.post(
+              '/inventario/movimientos',
+              {
+                tipo: 'TRANSFERENCIA',
+                varianteProductoId: variantId,
+                cantidad: item.quantity,
+                sucursalOrigenId: originId,
+                sucursalDestinoId: destId,
+                observacion: payload.notes || 'Transferencia entre sucursales',
+              },
+              {
+                headers: {
+                  'Idempotency-Key': crypto.randomUUID(),
+                },
+              },
+            );
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Error registrando transferencia en backend, aplicando en mock local:', err);
+    }
     return mockDb.createTransfer(payload);
   },
 
   async getTransfers(branchId?: string): Promise<StockTransfer[]> {
+    try {
+      const params: Record<string, any> = {
+        tipo: 'TRANSFERENCIA',
+        limit: 50,
+      };
+      if (branchId) {
+        const bId = parseInt(branchId, 10);
+        if (!isNaN(bId)) params.sucursalId = bId;
+      }
+      const response = await apiClient.get<any>('/inventario/movimientos', { params });
+      if (response.data && Array.isArray(response.data.data) && response.data.data.length > 0) {
+        return response.data.data.map((m: any) => ({
+          id: String(m.id),
+          transferCode: `TRF-${m.id.toString().padStart(5, '0')}`,
+          originBranchName: m.sucursalOrigen?.nombre || 'Sucursal Origen',
+          destinationBranchName: m.sucursalDestino?.nombre || 'Sucursal Destino',
+          status: 'RECEIVED' as const,
+          itemsCount: m.cantidad || 1,
+          createdAt: m.creadoEn || new Date().toISOString(),
+          receivedAt: m.creadoEn,
+        }));
+      }
+    } catch (err) {
+      console.warn('Backend /inventario/movimientos no disponible, usando mockDb:', err);
+    }
     return mockDb.getTransfers(branchId);
   },
 

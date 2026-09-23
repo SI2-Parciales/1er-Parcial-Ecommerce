@@ -208,4 +208,109 @@ export class VentaResponseDto {
 
   @ApiProperty({ type: [VentaDetalleResponseDto] })
   detalles!: VentaDetalleResponseDto[];
+
+  @ApiPropertyOptional({ type: () => [VentaPagoResumenDto] })
+  pagos?: VentaPagoResumenDto[];
+}
+
+export class VentaPagoResumenDto {
+  @ApiProperty({ example: 1 })
+  id!: number;
+
+  @ApiProperty({ example: 'EFECTIVO' })
+  metodo!: string;
+
+  @ApiProperty({ example: 150, type: Number })
+  monto!: number;
+
+  @ApiPropertyOptional({ example: 200, type: Number, nullable: true })
+  montoRecibido?: number | null;
+
+  @ApiPropertyOptional({ example: 50, type: Number, nullable: true })
+  cambio?: number | null;
+
+  @ApiPropertyOptional({ example: 'SIM-123456', nullable: true })
+  referencia?: string | null;
+
+  @ApiProperty({ example: 'CONFIRMADO' })
+  estado!: string;
+}
+
+export class ListVentasQueryDto {
+  @ApiPropertyOptional({ type: Number, example: 1, minimum: 1, default: 1 })
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page: number = 1;
+
+  @ApiPropertyOptional({
+    type: Number,
+    example: 20,
+    minimum: 1,
+    maximum: 100,
+    default: 20,
+  })
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit: number = 20;
+
+  @ApiPropertyOptional({ type: Number, example: 1 })
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  sucursalId?: number;
+
+  @ApiPropertyOptional({ type: Number, example: 3 })
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  cajeroId?: number;
+
+  @ApiPropertyOptional({ type: Number, example: 4 })
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  clienteId?: number;
+
+  @ApiPropertyOptional({ enum: CanalVenta })
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  canal?: CanalVenta;
+
+  @ApiPropertyOptional({ enum: EstadoVenta })
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  estado?: EstadoVenta;
+
+  @ApiPropertyOptional({ example: 'CONSUMIDOR', description: 'Buscar por cliente, documento o ID' })
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  buscar?: string;
+}
+
+export class VentasListMetaDto {
+  @ApiProperty({ example: 1 })
+  page!: number;
+
+  @ApiProperty({ example: 20 })
+  limit!: number;
+
+  @ApiProperty({ example: 42 })
+  total!: number;
+}
+
+export class VentasListResponseDto {
+  @ApiProperty({ type: [VentaResponseDto] })
+  data!: VentaResponseDto[];
+
+  @ApiProperty({ type: VentasListMetaDto })
+  meta!: VentasListMetaDto;
 }

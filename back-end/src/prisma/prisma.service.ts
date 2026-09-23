@@ -16,7 +16,12 @@ export class PrismaService
   }
 
   async onModuleInit(): Promise<void> {
-    await this.$connect();
+    try {
+      await this.$connect();
+      console.log('✅ Conexión con PostgreSQL establecida.');
+    } catch (err: any) {
+      console.warn('⚠️ Advertencia: Conexión inicial diferida con base de datos:', err?.message || err);
+    }
   }
 
   async onModuleDestroy(): Promise<void> {

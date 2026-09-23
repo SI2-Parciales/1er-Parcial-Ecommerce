@@ -24,6 +24,7 @@ import {
 } from '@nestjs/swagger';
 import { ACTOR_ROLE } from '../auth/auth.constants.js';
 import { MinRole } from '../auth/decorators/min-role.decorator.js';
+import { OptionalAuth } from '../auth/decorators/optional-auth.decorator.js';
 import {
   CreateTallaDto,
   DeactivateTallaResponseDto,
@@ -46,11 +47,11 @@ import { TallasService } from './tallas.service.js';
   description: 'El identificador, consulta o datos enviados no son válidos.',
 })
 @Controller('tallas')
-@MinRole(ACTOR_ROLE.ADMINISTRADOR)
 export class TallasController {
   constructor(private readonly tallasService: TallasService) {}
 
   @Post()
+  @MinRole(ACTOR_ROLE.ADMINISTRADOR)
   @ApiOperation({ summary: 'Crear una talla' })
   @ApiCreatedResponse({ description: 'Talla creada.', type: TallaResponseDto })
   @ApiConflictResponse({ description: 'Ya existe una talla con ese nombre.' })
@@ -59,6 +60,7 @@ export class TallasController {
   }
 
   @Get()
+  @OptionalAuth()
   @ApiOperation({ summary: 'Listar tallas activas con paginación' })
   @ApiOkResponse({
     description: 'Tallas y metadatos de paginación.',
@@ -69,6 +71,7 @@ export class TallasController {
   }
 
   @Get(':id')
+  @OptionalAuth()
   @ApiOperation({ summary: 'Consultar una talla, incluso si está inactiva' })
   @ApiParam({ name: 'id', example: 1 })
   @ApiOkResponse({ description: 'Talla encontrada.', type: TallaResponseDto })
@@ -78,6 +81,7 @@ export class TallasController {
   }
 
   @Patch(':id')
+  @MinRole(ACTOR_ROLE.ADMINISTRADOR)
   @ApiOperation({ summary: 'Actualizar o reactivar una talla' })
   @ApiParam({ name: 'id', example: 1 })
   @ApiOkResponse({ description: 'Talla actualizada.', type: TallaResponseDto })
@@ -88,6 +92,7 @@ export class TallasController {
   }
 
   @Delete(':id')
+  @MinRole(ACTOR_ROLE.ADMINISTRADOR)
   @ApiOperation({ summary: 'Desactivar una talla sin eliminarla' })
   @ApiParam({ name: 'id', example: 1 })
   @ApiOkResponse({

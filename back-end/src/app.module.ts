@@ -50,7 +50,6 @@ import { ReportesModule } from './reportes/reportes.module.js';
   controllers: [AppController],
   providers: [
     AppService,
-    Reflector,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: MinimumRoleGuard },

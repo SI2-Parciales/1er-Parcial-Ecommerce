@@ -1,4 +1,4 @@
-import { Body, Controller, Headers, Post } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Post, Query } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -7,6 +7,7 @@ import {
   ApiForbiddenResponse,
   ApiHeader,
   ApiNotFoundResponse,
+  ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
@@ -18,7 +19,9 @@ import type { AuthenticatedUser } from '../auth/guards/jwt-auth.guard.js';
 import {
   CreateVentaDigitalDto,
   CreateVentaPresencialDto,
+  ListVentasQueryDto,
   VentaResponseDto,
+  VentasListResponseDto,
 } from './ventas.dto.js';
 import { VentasService } from './ventas.service.js';
 
@@ -33,6 +36,24 @@ import { VentasService } from './ventas.service.js';
 @Controller('ventas')
 export class VentasController {
   constructor(private readonly ventasService: VentasService) {}
+
+  @Get()
+  @MinRole(ACTOR_ROLE.CAJERO)
+  @ApiOperation({
+    summary: 'Listar historial y auditoría de ventas',
+    description:
+      'Lista ventas realizadas con filtros por sucursal, cajero, estado y fechas.',
+  })
+  @ApiOkResponse({
+    description: 'Listado de ventas y metadatos de paginación.',
+    type: VentasListResponseDto,
+  })
+  findAll(
+    @Query() query: ListVentasQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.ventasService.findAll(query, user);
+  }
 
   @Post('presenciales')
   @MinRole(ACTOR_ROLE.CAJERO)

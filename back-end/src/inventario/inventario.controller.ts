@@ -22,6 +22,7 @@ import {
 import { ACTOR_ROLE } from '../auth/auth.constants.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import { MinRole } from '../auth/decorators/min-role.decorator.js';
+import { OptionalAuth } from '../auth/decorators/optional-auth.decorator.js';
 import type { AuthenticatedUser } from '../auth/guards/jwt-auth.guard.js';
 import {
   InventarioDisponibilidadResponseDto,
@@ -45,11 +46,11 @@ import { InventarioService } from './inventario.service.js';
   description: 'Uno o más filtros o identificadores no son válidos.',
 })
 @Controller('inventario')
-@MinRole(ACTOR_ROLE.ENCARGADO_SUCURSAL)
 export class InventarioController {
   constructor(private readonly inventarioService: InventarioService) {}
 
   @Get()
+  @OptionalAuth()
   @ApiOperation({
     summary: 'Consultar inventario consolidado o de una sucursal',
     description:
@@ -65,6 +66,7 @@ export class InventarioController {
   }
 
   @Get('variantes/:varianteId')
+  @OptionalAuth()
   @ApiOperation({
     summary: 'Consultar una variante en todas las sucursales',
     description:
@@ -84,6 +86,7 @@ export class InventarioController {
   }
 
   @Patch(':id/disponibilidad')
+  @MinRole(ACTOR_ROLE.ENCARGADO_SUCURSAL)
   @ApiOperation({
     summary: 'Apartar o habilitar unidades de un inventario local',
     description:

@@ -54,28 +54,55 @@ export class ProductosService {
   async findAll(query: QueryProductosDto, user?: AuthenticatedUser) {
     requireAdministratorForInactive(query.estado, user);
     const administrator = isAdministrator(user);
+    const page = query.pagina || query.page || 1;
+    const limit = query.limite || query.limit || 20;
+    const nombre = query.buscar || query.nombre;
+
     const where: Prisma.ProductoWhereInput = {
       estado: query.estado ?? ACTIVE_STATUS,
-      ...(query.nombre
-        ? { nombre: { contains: query.nombre, mode: 'insensitive' } }
+      ...(nombre
+        ? { nombre: { contains: nombre, mode: 'insensitive' } }
         : {}),
       ...(query.categoriaId ? { categoriaId: query.categoriaId } : {}),
       ...(administrator ? {} : { categoria: { estado: ACTIVE_STATUS } }),
     };
-    const skip = (query.page - 1) * query.limit;
+    const skip = (page - 1) * limit;
     const [productos, total] = await Promise.all([
       this.prisma.producto.findMany({
         where,
         skip,
-        take: query.limit,
+        take: limit,
         orderBy: { id: 'desc' },
-        select: this.productoSelect,
+        select: {
+          ...this.productoSelect,
+          variantes: {
+            where: administrator ? {} : { estado: ACTIVE_STATUS },
+            orderBy: { id: 'asc' },
+            select: {
+              id: true,
+              sku: true,
+              estado: true,
+              talla: { select: { id: true, nombre: true } },
+              color: { select: { id: true, nombre: true, codigoHex: true } },
+              inventarios: {
+                select: {
+                  id: true,
+                  cantidadFisica: true,
+                  cantidadReservada: true,
+                  cantidadNoDisponible: true,
+                  sucursalId: true,
+                  sucursal: { select: { id: true, nombre: true } },
+                },
+              },
+            },
+          },
+        },
       }),
       this.prisma.producto.count({ where }),
     ]);
     return {
       data: productos.map((producto) => this.mapPrice(producto)),
-      meta: { page: query.page, limit: query.limit, total },
+      meta: { page, limit, total },
     };
   }
 

@@ -98,6 +98,85 @@ export class UpdateUserDto {
   estado?: string;
 }
 
+export class CreateUserDto {
+  @ApiProperty({ example: 'Juan', maxLength: 100 })
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  nombre!: string;
+
+  @ApiProperty({ example: 'Perez', maxLength: 100 })
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  apellido!: string;
+
+  @ApiProperty({ example: '73168919', maxLength: 30 })
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(30)
+  telefono!: string;
+
+  @ApiProperty({
+    example: 'juan@example.com',
+    format: 'email',
+    maxLength: 254,
+  })
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim().toLowerCase() : value,
+  )
+  @IsEmail()
+  @MaxLength(254)
+  email!: string;
+
+  @ApiProperty({
+    example: 'Admin123,',
+    minLength: 8,
+    maxLength: 100,
+    description: 'Contraseña para la cuenta del usuario.',
+  })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  password!: string;
+
+  @ApiProperty({
+    example: 3,
+    minimum: 1,
+    description: 'ID de un rol existente (1=CLIENTE, 2=CAJERO, 3=ENCARGADO_SUCURSAL, 4=ADMINISTRADOR).',
+  })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  rolId!: number;
+
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    example: 1,
+    description: 'ID de la sucursal física asignada.',
+  })
+  @ValidateIf((_object, value: unknown) => value !== undefined && value !== null)
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  sucursalId?: number | null;
+
+  @ApiPropertyOptional({ enum: ['ACTIVO', 'INACTIVO'], example: 'ACTIVO', default: 'ACTIVO' })
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @IsIn(['ACTIVO', 'INACTIVO'])
+  estado?: string;
+}
+
 export class ManagedUserDto {
   @ApiProperty({ example: 12 })
   id!: number;

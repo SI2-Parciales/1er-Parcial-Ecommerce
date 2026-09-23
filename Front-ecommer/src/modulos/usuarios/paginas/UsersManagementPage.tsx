@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Users, UserPlus } from 'lucide-react';
 import { userService } from '../servicios/user.service';
 import type { CreateUserPayload } from '../servicios/user.service';
-import { mockDb } from '@core/mock/mock-db';
+import { branchService } from '@modulos/sucursales/servicios/branch.service';
 import type { UserSession } from '@core/types';
 import { BarraFiltrosUsuarios } from '../componentes/BarraFiltrosUsuarios';
 import { FilaUsuarioTabla } from '../componentes/FilaUsuarioTabla';
@@ -23,7 +23,7 @@ export const UsersManagementPage: React.FC = () => {
 
   const { data: branches = [] } = useQuery({
     queryKey: ['branches'],
-    queryFn: () => mockDb.getBranches(),
+    queryFn: () => branchService.getBranches(),
   });
 
   const createMutation = useMutation({

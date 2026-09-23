@@ -11,7 +11,7 @@ import {
  CheckCircle2, 
  XCircle 
 } from 'lucide-react';
-import { mockDb } from '@core/mock/mock-db';
+import { catalogService } from '../servicios/catalog.service';
 import type { CategoryItem, GarmentSize, GarmentColor } from '@core/types';
 
 export const TaxonomyManagementPage: React.FC = () => {
@@ -34,22 +34,22 @@ export const TaxonomyManagementPage: React.FC = () => {
  // Queries
  const { data: categories = [] } = useQuery({
  queryKey: ['categories'],
- queryFn: () => mockDb.getCategories(),
+ queryFn: () => catalogService.getCategories(),
  });
 
  const { data: sizes = [] } = useQuery({
  queryKey: ['sizes'],
- queryFn: () => mockDb.getSizes(),
+ queryFn: () => catalogService.getSizes(),
  });
 
  const { data: colors = [] } = useQuery({
  queryKey: ['colors'],
- queryFn: () => mockDb.getColors(),
+ queryFn: () => catalogService.getColors(),
  });
 
  // Mutations
  const catCreateMutation = useMutation({
- mutationFn: (payload: Omit<CategoryItem, 'id'>) => mockDb.createCategory(payload),
+ mutationFn: (payload: Omit<CategoryItem, 'id'>) => catalogService.createCategory(payload),
  onSuccess: () => {
  queryClient.invalidateQueries({ queryKey: ['categories'] });
  setIsCatModalOpen(false);
@@ -58,7 +58,7 @@ export const TaxonomyManagementPage: React.FC = () => {
 
  const catUpdateMutation = useMutation({
  mutationFn: ({ id, payload }: { id: string; payload: Partial<CategoryItem> }) =>
- mockDb.updateCategory(id, payload),
+ catalogService.updateCategory(id, payload),
  onSuccess: () => {
  queryClient.invalidateQueries({ queryKey: ['categories'] });
  setIsCatModalOpen(false);
@@ -67,12 +67,12 @@ export const TaxonomyManagementPage: React.FC = () => {
  });
 
  const catDeleteMutation = useMutation({
- mutationFn: (id: string) => mockDb.deleteCategory(id),
+ mutationFn: (id: string) => catalogService.deleteCategory(id),
  onSuccess: () => queryClient.invalidateQueries({ queryKey: ['categories'] }),
  });
 
  const sizeCreateMutation = useMutation({
- mutationFn: (payload: Omit<GarmentSize, 'id'>) => mockDb.createSize(payload),
+ mutationFn: (payload: Omit<GarmentSize, 'id'>) => catalogService.createSize(payload),
  onSuccess: () => {
  queryClient.invalidateQueries({ queryKey: ['sizes'] });
  setIsSizeModalOpen(false);
@@ -80,12 +80,12 @@ export const TaxonomyManagementPage: React.FC = () => {
  });
 
  const sizeDeleteMutation = useMutation({
- mutationFn: (id: string) => mockDb.deleteSize(id),
+ mutationFn: (id: string) => catalogService.deleteSize(id),
  onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sizes'] }),
  });
 
  const colorCreateMutation = useMutation({
- mutationFn: (payload: Omit<GarmentColor, 'id'>) => mockDb.createColor(payload),
+ mutationFn: (payload: Omit<GarmentColor, 'id'>) => catalogService.createColor(payload),
  onSuccess: () => {
  queryClient.invalidateQueries({ queryKey: ['colors'] });
  setIsColorModalOpen(false);
@@ -93,7 +93,7 @@ export const TaxonomyManagementPage: React.FC = () => {
  });
 
  const colorDeleteMutation = useMutation({
- mutationFn: (id: string) => mockDb.deleteColor(id),
+ mutationFn: (id: string) => catalogService.deleteColor(id),
  onSuccess: () => queryClient.invalidateQueries({ queryKey: ['colors'] }),
  });
 

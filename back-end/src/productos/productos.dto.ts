@@ -140,6 +140,28 @@ export class QueryProductosDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  pagina?: number;
+
+  @ApiPropertyOptional({ type: Number, example: 20, minimum: 1, maximum: 100 })
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  limite?: number;
+
+  @ApiPropertyOptional({ example: 'Polera' })
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? normalizeName(value) : value,
+  )
+  @IsString()
+  buscar?: string;
+
+  @ApiPropertyOptional({ type: Number, example: 1, minimum: 1 })
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   categoriaId?: number;
 
   @ApiPropertyOptional({ enum: ['ACTIVO', 'INACTIVO'], default: 'ACTIVO' })

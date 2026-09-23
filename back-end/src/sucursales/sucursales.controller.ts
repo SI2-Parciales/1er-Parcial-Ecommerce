@@ -24,6 +24,7 @@ import {
 } from '@nestjs/swagger';
 import { ACTOR_ROLE } from '../auth/auth.constants.js';
 import { MinRole } from '../auth/decorators/min-role.decorator.js';
+import { OptionalAuth } from '../auth/decorators/optional-auth.decorator.js';
 import {
   CreateSucursalDto,
   DeactivateSucursalResponseDto,
@@ -48,7 +49,6 @@ import { SucursalesService } from './sucursales.service.js';
   description: 'El identificador o los datos enviados no son válidos.',
 })
 @Controller('sucursales')
-@MinRole(ACTOR_ROLE.ENCARGADO_SUCURSAL)
 export class SucursalesController {
   constructor(private readonly sucursalesService: SucursalesService) {}
 
@@ -64,6 +64,7 @@ export class SucursalesController {
   }
 
   @Get()
+  @OptionalAuth()
   @ApiOperation({ summary: 'Listar sucursales con paginación' })
   @ApiOkResponse({
     description: 'Sucursales y metadatos de paginación.',
@@ -74,6 +75,7 @@ export class SucursalesController {
   }
 
   @Get(':id')
+  @OptionalAuth()
   @ApiOperation({ summary: 'Consultar una sucursal' })
   @ApiParam({ name: 'id', example: 1 })
   @ApiOkResponse({
@@ -115,6 +117,7 @@ export class SucursalesController {
   }
 
   @Get(':id/personal')
+  @MinRole(ACTOR_ROLE.ENCARGADO_SUCURSAL)
   @ApiOperation({ summary: 'Listar personal asignado a una sucursal' })
   @ApiParam({ name: 'id', example: 1 })
   @ApiOkResponse({

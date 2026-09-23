@@ -1,5 +1,6 @@
 import { apiClient } from '@core/http/api-client';
 import type { 
+  CategoryItem,
   GarmentProduct, 
   GarmentSize, 
   GarmentColor, 
@@ -120,15 +121,51 @@ export const catalogService = {
 
   async createProduct(payload: ProductFormValues): Promise<GarmentProduct> {
     try {
-      // Intento en backend si hay categoría válida
+      let categoriaId = 1;
+      const catUpper = (payload.category || '').toUpperCase();
+      if (catUpper.includes('PANTS') || catUpper.includes('DEPORTIV') || catUpper.includes('FOOTWEAR')) {
+        categoriaId = 3;
+      } else if (catUpper.includes('DRESS') || catUpper.includes('GALA')) {
+        categoriaId = 2;
+      }
+
       const response = await apiClient.post<any>('/productos', {
         nombre: payload.name,
         descripcion: payload.description,
-        categoriaId: 1, // Categoría por defecto
+        categoriaId,
         precio: payload.basePrice,
       });
+
       if (response.data && response.data.id) {
-        return mapBackendProduct(response.data);
+        const prodId = response.data.id;
+
+        // Crear variantes en el backend si fueron proporcionadas
+        if (Array.isArray(payload.variants) && payload.variants.length > 0) {
+          for (const v of payload.variants) {
+            try {
+              const tallaId = parseInt(v.sizeId.replace(/\D/g, ''), 10) || 1;
+              const colorId = parseInt(v.colorId.replace(/\D/g, ''), 10) || 1;
+              await apiClient.post(`/productos/${prodId}/variantes`, {
+                tallaId,
+                colorId,
+                sku: v.sku,
+              });
+            } catch (varErr) {
+              console.warn(`No se pudo crear variante ${v.sku} para producto ${prodId}:`, varErr);
+            }
+          }
+        }
+
+        if (payload.images && payload.images[0]) {
+          try {
+            await apiClient.patch(`/productos/${prodId}`, {
+              imagenUrl: payload.images[0],
+            });
+          } catch {}
+        }
+
+        const fullProd = await apiClient.get(`/productos/${prodId}`);
+        return mapBackendProduct(fullProd.data);
       }
     } catch (err) {
       console.warn('Backend POST /productos no disponible, guardando en mockDb:', err);
@@ -159,6 +196,85 @@ export const catalogService = {
     return mockDb.uploadAsset(file);
   },
 
+  async getCategories(): Promise<CategoryItem[]> {
+    try {
+      const response = await apiClient.get<any>('/categorias');
+      const list = response.data?.data || response.data;
+      if (Array.isArray(list) && list.length > 0) {
+        return list.map((cat: any) => ({
+          id: String(cat.id),
+          name: cat.nombre,
+          code: `CAT-${cat.id}`,
+          description: cat.descripcion || '',
+          isActive: cat.estado === 'ACTIVO',
+        }));
+      }
+    } catch (err) {
+      console.warn('Backend /categorias no disponible, usando mockDb:', err);
+    }
+    return mockDb.getCategories();
+  },
+
+  async createCategory(payload: Omit<CategoryItem, 'id'>): Promise<CategoryItem> {
+    try {
+      const response = await apiClient.post<any>('/categorias', {
+        nombre: payload.name,
+        descripcion: payload.description,
+      });
+      if (response.data && response.data.id) {
+        return {
+          id: String(response.data.id),
+          name: response.data.nombre,
+          code: `CAT-${response.data.id}`,
+          description: response.data.descripcion || '',
+          isActive: response.data.estado === 'ACTIVO',
+        };
+      }
+    } catch (err) {
+      console.warn('Backend POST /categorias falló, usando mockDb:', err);
+    }
+    return mockDb.createCategory(payload);
+  },
+
+  async updateCategory(id: string, payload: Partial<CategoryItem>): Promise<CategoryItem> {
+    try {
+      const numId = parseInt(id, 10);
+      if (!isNaN(numId)) {
+        const updateData: Record<string, any> = {};
+        if (payload.name) updateData.nombre = payload.name;
+        if (payload.description !== undefined) updateData.descripcion = payload.description;
+        if (payload.isActive !== undefined) updateData.estado = payload.isActive ? 'ACTIVO' : 'INACTIVO';
+
+        const response = await apiClient.patch<any>(`/categorias/${numId}`, updateData);
+        if (response.data && response.data.id) {
+          return {
+            id: String(response.data.id),
+            name: response.data.nombre,
+            code: `CAT-${response.data.id}`,
+            description: response.data.descripcion || '',
+            isActive: response.data.estado === 'ACTIVO',
+          };
+        }
+      }
+    } catch (err) {
+      console.warn(`Backend PATCH /categorias/${id} falló:`, err);
+    }
+    return mockDb.updateCategory(id, payload);
+  },
+
+  async deleteCategory(id: string): Promise<void> {
+    try {
+      const numId = parseInt(id, 10);
+      if (!isNaN(numId)) {
+        await apiClient.delete(`/categorias/${numId}`);
+        return;
+      }
+    } catch (err) {
+      console.warn(`Backend DELETE /categorias/${id} falló:`, err);
+    }
+    return mockDb.deleteCategory(id);
+  },
+
   async getSizes(): Promise<GarmentSize[]> {
     try {
       const response = await apiClient.get<any>('/tallas');
@@ -176,6 +292,37 @@ export const catalogService = {
     return mockDb.getSizes();
   },
 
+  async createSize(payload: Omit<GarmentSize, 'id'>): Promise<GarmentSize> {
+    try {
+      const response = await apiClient.post<any>('/tallas', {
+        nombre: payload.name,
+      });
+      if (response.data && response.data.id) {
+        return {
+          id: String(response.data.id),
+          name: response.data.nombre,
+          orderIndex: payload.orderIndex || 1,
+        };
+      }
+    } catch (err) {
+      console.warn('Backend POST /tallas falló, usando mockDb:', err);
+    }
+    return mockDb.createSize(payload);
+  },
+
+  async deleteSize(id: string): Promise<void> {
+    try {
+      const numId = parseInt(id, 10);
+      if (!isNaN(numId)) {
+        await apiClient.delete(`/tallas/${numId}`);
+        return;
+      }
+    } catch (err) {
+      console.warn(`Backend DELETE /tallas/${id} falló:`, err);
+    }
+    return mockDb.deleteSize(id);
+  },
+
   async getColors(): Promise<GarmentColor[]> {
     try {
       const response = await apiClient.get<any>('/colores');
@@ -191,6 +338,38 @@ export const catalogService = {
       console.warn('Backend /colores no disponible, usando mockDb:', err);
     }
     return mockDb.getColors();
+  },
+
+  async createColor(payload: Omit<GarmentColor, 'id'>): Promise<GarmentColor> {
+    try {
+      const response = await apiClient.post<any>('/colores', {
+        nombre: payload.name,
+        codigoHex: payload.hexCode,
+      });
+      if (response.data && response.data.id) {
+        return {
+          id: String(response.data.id),
+          name: response.data.nombre,
+          hexCode: response.data.codigoHex,
+        };
+      }
+    } catch (err) {
+      console.warn('Backend POST /colores falló, usando mockDb:', err);
+    }
+    return mockDb.createColor(payload);
+  },
+
+  async deleteColor(id: string): Promise<void> {
+    try {
+      const numId = parseInt(id, 10);
+      if (!isNaN(numId)) {
+        await apiClient.delete(`/colores/${numId}`);
+        return;
+      }
+    } catch (err) {
+      console.warn(`Backend DELETE /colores/${id} falló:`, err);
+    }
+    return mockDb.deleteColor(id);
   },
 
   async getProviders(): Promise<Array<{ id: string; name: string }>> {

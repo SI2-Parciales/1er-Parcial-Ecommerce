@@ -6,12 +6,14 @@ import {
   Param,
   ParseIntPipe,
   Patch,
+  Post,
   Query,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiBadRequestResponse,
   ApiConflictResponse,
+  ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -25,6 +27,7 @@ import { MinRole } from '../auth/decorators/min-role.decorator.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/guards/jwt-auth.guard.js';
 import {
+  CreateUserDto,
   DeactivateUserResponseDto,
   ListUsersQueryDto,
   ManagedUserDto,
@@ -66,6 +69,15 @@ export class UsersController {
   @ApiOkResponse({ description: 'Usuarios y metadatos de paginación.', type: UserListResponseDto })
   findAll(@Query() query: ListUsersQueryDto) {
     return this.usersService.findAll(query);
+  }
+
+  @Post()
+  @ApiOperation({ summary: 'Crear un nuevo usuario con rol y sucursal' })
+  @ApiCreatedResponse({ description: 'Usuario creado exitosamente.', type: ManagedUserDto })
+  @ApiConflictResponse({ description: 'El correo electrónico ya está registrado.' })
+  @ApiNotFoundResponse({ description: 'El rol o la sucursal especificada no existe.' })
+  create(@Body() dto: CreateUserDto) {
+    return this.usersService.createUser(dto);
   }
 
   @Get(':id')

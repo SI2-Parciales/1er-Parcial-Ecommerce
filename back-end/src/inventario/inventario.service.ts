@@ -260,6 +260,14 @@ export class InventarioService {
   }
 
   async findAll(query: QueryInventarioDto) {
+    const page = query.pagina || query.page || 1;
+    const limit = query.limite || query.limit || 20;
+    if (query.buscar && !query.nombre) {
+      query.nombre = query.buscar;
+    }
+    query.page = page;
+    query.limit = limit;
+
     if (query.sucursalId !== undefined) {
       const sucursal = await this.prisma.sucursal.findUnique({
         where: { id: query.sucursalId },

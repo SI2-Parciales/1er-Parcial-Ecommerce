@@ -23,6 +23,7 @@ import {
   CreateVentaDigitalDto,
   CreateVentaDetalleDto,
   CreateVentaPresencialDto,
+  ListVentasQueryDto,
 } from './ventas.dto.js';
 
 interface CurrentActorRow {
@@ -106,6 +107,18 @@ const ventaSelect = {
       },
     },
   },
+  pagos: {
+    orderBy: { id: 'asc' as const },
+    select: {
+      id: true,
+      metodo: true,
+      monto: true,
+      montoRecibido: true,
+      cambio: true,
+      referencia: true,
+      estado: true,
+    },
+  },
 } satisfies Prisma.VentaSelect;
 
 type VentaRecord = Prisma.VentaGetPayload<{ select: typeof ventaSelect }>;
@@ -127,6 +140,69 @@ export class VentasService {
     private readonly inventarioService: InventarioService,
     private readonly carritoService: CarritoService,
   ) {}
+
+  async findAll(query: ListVentasQueryDto, user: AuthenticatedUser) {
+    const page = query.page || 1;
+    const limit = query.limit || 20;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.VentaWhereInput = {};
+
+    if (user.role === ACTOR_ROLE.CAJERO || user.role === ACTOR_ROLE.ENCARGADO_SUCURSAL) {
+      const dbUser = await this.prisma.usuario.findUnique({
+        where: { id: user.id },
+        select: { sucursalId: true },
+      });
+      if (dbUser?.sucursalId) {
+        where.sucursalId = dbUser.sucursalId;
+      }
+    } else if (user.role === ACTOR_ROLE.CLIENTE) {
+      where.clienteId = user.id;
+    } else if (query.sucursalId) {
+      where.sucursalId = query.sucursalId;
+    }
+
+    if (query.cajeroId) {
+      where.cajeroId = query.cajeroId;
+    }
+
+    if (query.clienteId && user.role !== ACTOR_ROLE.CLIENTE) {
+      where.clienteId = query.clienteId;
+    }
+
+    if (query.canal) {
+      where.canal = query.canal;
+    }
+
+    if (query.estado) {
+      where.estado = query.estado;
+    }
+
+    if (query.buscar) {
+      const searchNum = parseInt(query.buscar, 10);
+      where.OR = [
+        { nombreFacturacion: { contains: query.buscar, mode: 'insensitive' } },
+        { documentoFacturacion: { contains: query.buscar, mode: 'insensitive' } },
+        ...(!isNaN(searchNum) ? [{ id: searchNum }] : []),
+      ];
+    }
+
+    const [sales, total] = await Promise.all([
+      this.prisma.venta.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { id: 'desc' },
+        select: ventaSelect,
+      }),
+      this.prisma.venta.count({ where }),
+    ]);
+
+    return {
+      data: sales.map((s) => this.mapSale(s)),
+      meta: { page, limit, total },
+    };
+  }
 
   async createPresencial(
     input: CreateVentaPresencialDto,
@@ -632,6 +708,15 @@ export class VentasService {
         precioUnitario: detail.precioUnitario.toNumber(),
         subtotal: detail.subtotal.toNumber(),
         variante: detail.varianteProducto,
+      })),
+      pagos: (sale.pagos || []).map((p) => ({
+        id: p.id,
+        metodo: p.metodo,
+        monto: p.monto.toNumber(),
+        montoRecibido: p.montoRecibido ? p.montoRecibido.toNumber() : null,
+        cambio: p.cambio ? p.cambio.toNumber() : null,
+        referencia: p.referencia,
+        estado: p.estado,
       })),
     };
   }

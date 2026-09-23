@@ -24,6 +24,7 @@ import {
 } from '@nestjs/swagger';
 import { ACTOR_ROLE } from '../auth/auth.constants.js';
 import { MinRole } from '../auth/decorators/min-role.decorator.js';
+import { OptionalAuth } from '../auth/decorators/optional-auth.decorator.js';
 import {
   CategoriaListResponseDto,
   CategoriaResponseDto,
@@ -46,11 +47,11 @@ import { CategoriasService } from './categorias.service.js';
   description: 'El identificador, consulta o datos enviados no son válidos.',
 })
 @Controller('categorias')
-@MinRole(ACTOR_ROLE.ADMINISTRADOR)
 export class CategoriasController {
   constructor(private readonly categoriasService: CategoriasService) {}
 
   @Post()
+  @MinRole(ACTOR_ROLE.ADMINISTRADOR)
   @ApiOperation({ summary: 'Crear una categoría' })
   @ApiCreatedResponse({
     description: 'Categoría creada.',
@@ -64,6 +65,7 @@ export class CategoriasController {
   }
 
   @Get()
+  @OptionalAuth()
   @ApiOperation({ summary: 'Listar categorías activas con paginación' })
   @ApiOkResponse({
     description: 'Categorías y metadatos de paginación.',
@@ -74,6 +76,7 @@ export class CategoriasController {
   }
 
   @Get(':id')
+  @OptionalAuth()
   @ApiOperation({
     summary: 'Consultar una categoría, incluso si está inactiva',
   })
@@ -88,6 +91,7 @@ export class CategoriasController {
   }
 
   @Patch(':id')
+  @MinRole(ACTOR_ROLE.ADMINISTRADOR)
   @ApiOperation({ summary: 'Actualizar o reactivar una categoría' })
   @ApiParam({ name: 'id', example: 1 })
   @ApiOkResponse({
@@ -106,6 +110,7 @@ export class CategoriasController {
   }
 
   @Delete(':id')
+  @MinRole(ACTOR_ROLE.ADMINISTRADOR)
   @ApiOperation({ summary: 'Desactivar una categoría sin eliminarla' })
   @ApiParam({ name: 'id', example: 1 })
   @ApiOkResponse({

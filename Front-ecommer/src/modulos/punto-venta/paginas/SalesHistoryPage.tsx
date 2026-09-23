@@ -8,7 +8,8 @@ import {
   X, 
   Eye
 } from 'lucide-react';
-import { mockDb } from '@core/mock/mock-db';
+import { posService } from '../servicios/pos.service';
+import { branchService } from '@modulos/sucursales/servicios/branch.service';
 import type { SaleReceipt } from '@modulos/punto-venta/tipos/pos.types';
 
 export const SalesHistoryPage: React.FC = () => {
@@ -18,12 +19,12 @@ export const SalesHistoryPage: React.FC = () => {
 
   const { data: sales = [], isLoading } = useQuery({
     queryKey: ['sales-all'],
-    queryFn: () => mockDb.getAllSales(),
+    queryFn: () => posService.getAllSales(),
   });
 
   const { data: branches = [] } = useQuery({
     queryKey: ['branches'],
-    queryFn: () => mockDb.getBranches(),
+    queryFn: () => branchService.getBranches(),
   });
 
   const filteredSales = sales.filter(s => {
