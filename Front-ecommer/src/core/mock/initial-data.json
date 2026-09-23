@@ -1,0 +1,865 @@
+{
+  "users": [
+    {
+      "id": "user-1",
+      "email": "admin@fashionstore.com",
+      "name": "Carlos Administrador",
+      "role": "ADMIN",
+      "assignedBranchId": "branch-1",
+      "assignedBranchName": "Sucursal Central",
+      "isActive": true
+    },
+    {
+      "id": "user-2",
+      "email": "manager@fashionstore.com",
+      "name": "Laura Gerente",
+      "role": "BRANCH_MANAGER",
+      "assignedBranchId": "branch-1",
+      "assignedBranchName": "Sucursal Central",
+      "isActive": true
+    },
+    {
+      "id": "user-3",
+      "email": "cajero@fashionstore.com",
+      "name": "Santiago Cajero",
+      "role": "CASHIER",
+      "assignedBranchId": "branch-1",
+      "assignedBranchName": "Sucursal Central",
+      "isActive": true
+    }
+  ],
+  "branches": [
+    {
+      "id": "branch-1",
+      "name": "Sucursal Central",
+      "code": "SUC-01",
+      "address": "Av. Principal # 100, Zona Comercial",
+      "phone": "+591 70011223"
+    },
+    {
+      "id": "branch-2",
+      "name": "Sucursal Norte",
+      "code": "SUC-02",
+      "address": "Centro Comercial Norte, Nivel 2",
+      "phone": "+591 70044556"
+    },
+    {
+      "id": "branch-3",
+      "name": "Sucursal Sur",
+      "code": "SUC-03",
+      "address": "Mall Los Pinos, Local 45",
+      "phone": "+591 70077889"
+    }
+  ],
+  "sizes": [
+    { "id": "size-xs", "name": "XS", "orderIndex": 1 },
+    { "id": "size-s", "name": "S", "orderIndex": 2 },
+    { "id": "size-m", "name": "M", "orderIndex": 3 },
+    { "id": "size-l", "name": "L", "orderIndex": 4 },
+    { "id": "size-xl", "name": "XL", "orderIndex": 5 },
+    { "id": "size-xxl", "name": "XXL", "orderIndex": 6 }
+  ],
+  "colors": [
+    { "id": "col-black", "name": "Negro", "hexCode": "#111827" },
+    { "id": "col-white", "name": "Blanco", "hexCode": "#F9FAFB" },
+    { "id": "col-navy", "name": "Azul Marino", "hexCode": "#1E3A8A" },
+    { "id": "col-ruby", "name": "Rojo Rubí", "hexCode": "#B91C1C" },
+    { "id": "col-beige", "name": "Beige", "hexCode": "#D2B48C" },
+    { "id": "col-olive", "name": "Verde Oliva", "hexCode": "#3F6212" }
+  ],
+  "providers": [
+    { "id": "prov-1", "name": "Confecciones del Valle S.A." },
+    { "id": "prov-2", "name": "Textiles Andinos Express" },
+    { "id": "prov-3", "name": "Importadora Moda & Estilo" }
+  ],
+  "products": [
+    {
+      "id": "prod-1",
+      "name": "Vestido de Gala Satinado",
+      "description": "Vestido largo confeccionado en satén de seda con corte evasé y escote pronunciado.",
+      "category": "DRESSES",
+      "collection": "Colección Nocturna 2026",
+      "season": "AUTUMN_WINTER",
+      "providerId": "prov-1",
+      "providerName": "Confecciones del Valle S.A.",
+      "basePrice": 89.99,
+      "images": ["https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=500&auto=format&fit=crop&q=60"],
+      "asset3D": {
+        "id": "asset-1",
+        "modelUrl": "/models/vestido_seda.glb",
+        "fileSizeBytes": 12582912,
+        "scaleFactor": 1.0,
+        "uploadedAt": "2026-03-01T10:00:00Z"
+      },
+      "isActive": true,
+      "createdAt": "2026-02-15T08:00:00Z",
+      "updatedAt": "2026-03-01T10:00:00Z",
+      "variants": [
+        {
+          "id": "var-1",
+          "garmentId": "prod-1",
+          "sku": "VES-NEG-M",
+          "barcode": "77010001001",
+          "size": { "id": "size-m", "name": "M", "orderIndex": 3 },
+          "color": { "id": "col-black", "name": "Negro", "hexCode": "#111827" },
+          "price": 89.99,
+          "costPrice": 45.00,
+          "isActive": true
+        },
+        {
+          "id": "var-2",
+          "garmentId": "prod-1",
+          "sku": "VES-NEG-L",
+          "barcode": "77010001002",
+          "size": { "id": "size-l", "name": "L", "orderIndex": 4 },
+          "color": { "id": "col-black", "name": "Negro", "hexCode": "#111827" },
+          "price": 89.99,
+          "costPrice": 45.00,
+          "isActive": true
+        },
+        {
+          "id": "var-3",
+          "garmentId": "prod-1",
+          "sku": "VES-ROJ-S",
+          "barcode": "77010001003",
+          "size": { "id": "size-s", "name": "S", "orderIndex": 2 },
+          "color": { "id": "col-ruby", "name": "Rojo Rubí", "hexCode": "#B91C1C" },
+          "price": 94.99,
+          "costPrice": 48.00,
+          "isActive": true
+        }
+      ]
+    },
+    {
+      "id": "prod-2",
+      "name": "Blusa Satinada Elegante",
+      "description": "Blusa femenina con caída fluida en satén sedoso y escote refinado.",
+      "category": "SHIRTS",
+      "collection": "Línea Ejecutiva Mujer",
+      "season": "SPRING_SUMMER",
+      "providerId": "prov-2",
+      "providerName": "Textiles Andinos Express",
+      "basePrice": 48.00,
+      "images": ["https://images.unsplash.com/photo-1564257631407-4deb1f99d992?w=500&auto=format&fit=crop&q=60"],
+      "isActive": true,
+      "createdAt": "2026-01-20T10:00:00Z",
+      "updatedAt": "2026-02-10T14:30:00Z",
+      "variants": [
+        {
+          "id": "var-4",
+          "garmentId": "prod-2",
+          "sku": "BLU-BLA-S",
+          "barcode": "77020002001",
+          "size": { "id": "size-s", "name": "S", "orderIndex": 2 },
+          "color": { "id": "col-white", "name": "Blanco", "hexCode": "#F9FAFB" },
+          "price": 48.00,
+          "costPrice": 24.00,
+          "isActive": true
+        },
+        {
+          "id": "var-5",
+          "garmentId": "prod-2",
+          "sku": "BLU-BLA-M",
+          "barcode": "77020002002",
+          "size": { "id": "size-m", "name": "M", "orderIndex": 3 },
+          "color": { "id": "col-white", "name": "Blanco", "hexCode": "#F9FAFB" },
+          "price": 48.00,
+          "costPrice": 24.00,
+          "isActive": true
+        },
+        {
+          "id": "var-6",
+          "garmentId": "prod-2",
+          "sku": "BLU-AZU-L",
+          "barcode": "77020002003",
+          "size": { "id": "size-l", "name": "L", "orderIndex": 4 },
+          "color": { "id": "col-navy", "name": "Azul Marino", "hexCode": "#1E3A8A" },
+          "price": 50.00,
+          "costPrice": 25.00,
+          "isActive": true
+        }
+      ]
+    },
+    {
+      "id": "prod-3",
+      "name": "Blazer Entallado Mujer",
+      "description": "Blazer femenino estructurado entallado a la cintura con solapa fina y botones carey.",
+      "category": "JACKETS",
+      "collection": "Urban Chic Mujer",
+      "season": "AUTUMN_WINTER",
+      "providerId": "prov-3",
+      "providerName": "Importadora Moda & Estilo",
+      "basePrice": 119.50,
+      "images": ["https://images.unsplash.com/photo-1548624149-f9b1859aa9d0?w=500&auto=format&fit=crop&q=60"],
+      "isActive": true,
+      "createdAt": "2026-02-01T12:00:00Z",
+      "updatedAt": "2026-02-28T16:00:00Z",
+      "variants": [
+        {
+          "id": "var-7",
+          "garmentId": "prod-3",
+          "sku": "BLZ-NEG-M",
+          "barcode": "77030003001",
+          "size": { "id": "size-m", "name": "M", "orderIndex": 3 },
+          "color": { "id": "col-black", "name": "Negro", "hexCode": "#111827" },
+          "price": 119.50,
+          "costPrice": 60.00,
+          "isActive": true
+        },
+        {
+          "id": "var-8",
+          "garmentId": "prod-3",
+          "sku": "BLZ-NEG-L",
+          "barcode": "77030003002",
+          "size": { "id": "size-l", "name": "L", "orderIndex": 4 },
+          "color": { "id": "col-black", "name": "Negro", "hexCode": "#111827" },
+          "price": 119.50,
+          "costPrice": 60.00,
+          "isActive": true
+        }
+      ]
+    },
+    {
+      "id": "prod-4",
+      "name": "Pantalón Palazzo Tiro Alto Mujer",
+      "description": "Pantalón femenino de tiro alto y pierna ancha que define y estiliza la cintura.",
+      "category": "PANTS",
+      "collection": "Casual Everyday Mujer",
+      "season": "SPRING_SUMMER",
+      "providerId": "prov-1",
+      "providerName": "Confecciones del Valle S.A.",
+      "basePrice": 56.00,
+      "images": ["https://images.unsplash.com/photo-1509631179647-0177331693ae?w=500&auto=format&fit=crop&q=60"],
+      "isActive": true,
+      "createdAt": "2026-01-15T09:00:00Z",
+      "updatedAt": "2026-01-25T11:00:00Z",
+      "variants": [
+        {
+          "id": "var-9",
+          "garmentId": "prod-4",
+          "sku": "PAL-BEI-M",
+          "barcode": "77040004001",
+          "size": { "id": "size-m", "name": "M", "orderIndex": 3 },
+          "color": { "id": "col-beige", "name": "Beige", "hexCode": "#D2B48C" },
+          "price": 56.00,
+          "costPrice": 28.00,
+          "isActive": true
+        },
+        {
+          "id": "var-10",
+          "garmentId": "prod-4",
+          "sku": "PAL-AZU-L",
+          "barcode": "77040004002",
+          "size": { "id": "size-l", "name": "L", "orderIndex": 4 },
+          "color": { "id": "col-navy", "name": "Azul Marino", "hexCode": "#1E3A8A" },
+          "price": 56.00,
+          "costPrice": 28.00,
+          "isActive": true
+        }
+      ]
+    }
+  ],
+  "inventory": [
+    {
+      "id": "stk-1",
+      "branchId": "branch-1",
+      "branchName": "Sucursal Central",
+      "variantId": "var-1",
+      "sku": "VES-NEG-M",
+      "barcode": "77010001001",
+      "garmentName": "Vestido de Gala Satinado",
+      "sizeName": "M",
+      "colorName": "Negro",
+      "category": "DRESSES",
+      "availableStock": 14,
+      "reservedStock": 2,
+      "totalStock": 16,
+      "minAlertThreshold": 5
+    },
+    {
+      "id": "stk-2",
+      "branchId": "branch-1",
+      "branchName": "Sucursal Central",
+      "variantId": "var-2",
+      "sku": "VES-NEG-L",
+      "barcode": "77010001002",
+      "garmentName": "Vestido de Gala Satinado",
+      "sizeName": "L",
+      "colorName": "Negro",
+      "category": "DRESSES",
+      "availableStock": 2,
+      "reservedStock": 1,
+      "totalStock": 3,
+      "minAlertThreshold": 5
+    },
+    {
+      "id": "stk-3",
+      "branchId": "branch-1",
+      "branchName": "Sucursal Central",
+      "variantId": "var-3",
+      "sku": "VES-ROJ-S",
+      "barcode": "77010001003",
+      "garmentName": "Vestido de Gala Satinado",
+      "sizeName": "S",
+      "colorName": "Rojo Rubí",
+      "category": "DRESSES",
+      "availableStock": 8,
+      "reservedStock": 1,
+      "totalStock": 9,
+      "minAlertThreshold": 4
+    },
+    {
+      "id": "stk-4",
+      "branchId": "branch-1",
+      "branchName": "Sucursal Central",
+      "variantId": "var-4",
+      "sku": "BLU-BLA-S",
+      "barcode": "77020002001",
+      "garmentName": "Blusa Satinada Elegante",
+      "sizeName": "S",
+      "colorName": "Blanco",
+      "category": "SHIRTS",
+      "availableStock": 20,
+      "reservedStock": 2,
+      "totalStock": 22,
+      "minAlertThreshold": 6
+    },
+    {
+      "id": "stk-5",
+      "branchId": "branch-1",
+      "branchName": "Sucursal Central",
+      "variantId": "var-5",
+      "sku": "BLU-BLA-M",
+      "barcode": "77020002002",
+      "garmentName": "Blusa Satinada Elegante",
+      "sizeName": "M",
+      "colorName": "Blanco",
+      "category": "SHIRTS",
+      "availableStock": 25,
+      "reservedStock": 0,
+      "totalStock": 25,
+      "minAlertThreshold": 6
+    },
+    {
+      "id": "stk-6",
+      "branchId": "branch-1",
+      "branchName": "Sucursal Central",
+      "variantId": "var-7",
+      "sku": "BLZ-NEG-M",
+      "barcode": "77030003001",
+      "garmentName": "Blazer Entallado Mujer",
+      "sizeName": "M",
+      "colorName": "Negro",
+      "category": "JACKETS",
+      "availableStock": 3,
+      "reservedStock": 1,
+      "totalStock": 4,
+      "minAlertThreshold": 4
+    },
+    {
+      "id": "stk-7",
+      "branchId": "branch-1",
+      "branchName": "Sucursal Central",
+      "variantId": "var-8",
+      "sku": "BLZ-NEG-L",
+      "barcode": "77030003002",
+      "garmentName": "Blazer Entallado Mujer",
+      "sizeName": "L",
+      "colorName": "Negro",
+      "category": "JACKETS",
+      "availableStock": 5,
+      "reservedStock": 1,
+      "totalStock": 6,
+      "minAlertThreshold": 4
+    },
+    {
+      "id": "stk-8",
+      "branchId": "branch-1",
+      "branchName": "Sucursal Central",
+      "variantId": "var-9",
+      "sku": "PAL-BEI-M",
+      "barcode": "77040004001",
+      "garmentName": "Pantalón Palazzo Tiro Alto Mujer",
+      "sizeName": "M",
+      "colorName": "Beige",
+      "category": "PANTS",
+      "availableStock": 12,
+      "reservedStock": 1,
+      "totalStock": 13,
+      "minAlertThreshold": 5
+    },
+    {
+      "id": "stk-9",
+      "branchId": "branch-2",
+      "branchName": "Sucursal Norte",
+      "variantId": "var-1",
+      "sku": "VES-NEG-M",
+      "barcode": "77010001001",
+      "garmentName": "Vestido de Gala Satinado",
+      "sizeName": "M",
+      "colorName": "Negro",
+      "category": "DRESSES",
+      "availableStock": 6,
+      "reservedStock": 0,
+      "totalStock": 6,
+      "minAlertThreshold": 5
+    }
+  ],
+  "transfers": [
+    {
+      "id": "trf-1001",
+      "transferCode": "TRF-1001",
+      "originBranchName": "Sucursal Central",
+      "destinationBranchName": "Sucursal Norte",
+      "status": "IN_TRANSIT",
+      "itemsCount": 4,
+      "createdAt": "2026-09-12T14:30:00Z"
+    },
+    {
+      "id": "trf-1002",
+      "transferCode": "TRF-1002",
+      "originBranchName": "Sucursal Sur",
+      "destinationBranchName": "Sucursal Central",
+      "status": "RECEIVED",
+      "itemsCount": 10,
+      "createdAt": "2026-09-10T09:15:00Z",
+      "receivedAt": "2026-09-11T16:00:00Z"
+    },
+    {
+      "id": "trf-1003",
+      "transferCode": "TRF-1003",
+      "originBranchName": "Sucursal Central",
+      "destinationBranchName": "Sucursal Sur",
+      "status": "PENDING",
+      "itemsCount": 2,
+      "createdAt": "2026-09-14T08:00:00Z"
+    }
+  ],
+  "reservations": [
+    {
+      "id": "res-1",
+      "reservationCode": "RES-1042",
+      "clientId": "cli-1",
+      "clientName": "Valentina Morales",
+      "clientPhone": "+591 71234567",
+      "branchId": "branch-1",
+      "branchName": "Sucursal Central",
+      "scheduledTime": "2026-09-14T16:30:00Z",
+      "status": "PENDING",
+      "items": [
+        {
+          "id": "item-1",
+          "variantId": "var-1",
+          "sku": "VES-NEG-M",
+          "barcode": "77010001001",
+          "garmentName": "Vestido de Gala Satinado",
+          "sizeName": "M",
+          "colorName": "Negro",
+          "price": 89.99,
+          "imageUrl": "https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=500&auto=format&fit=crop&q=60"
+        },
+        {
+          "id": "item-2",
+          "variantId": "var-4",
+          "sku": "CAM-BLA-S",
+          "barcode": "77020002001",
+          "garmentName": "Camisa Oxford Slim Fit",
+          "sizeName": "S",
+          "colorName": "Blanco",
+          "price": 45.00,
+          "imageUrl": "https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?w=500&auto=format&fit=crop&q=60"
+        }
+      ],
+      "notes": "Cliente solicita probar con accesorios dorados.",
+      "createdAt": "2026-09-14T14:15:00Z",
+      "updatedAt": "2026-09-14T14:15:00Z"
+    },
+    {
+      "id": "res-2",
+      "reservationCode": "RES-1039",
+      "clientId": "cli-2",
+      "clientName": "Mateo Fernández",
+      "clientPhone": "+591 79876543",
+      "branchId": "branch-1",
+      "branchName": "Sucursal Central",
+      "scheduledTime": "2026-09-14T15:45:00Z",
+      "status": "PREPARING",
+      "items": [
+        {
+          "id": "item-3",
+          "variantId": "var-8",
+          "sku": "CHQ-NEG-L",
+          "barcode": "77030003002",
+          "garmentName": "Chaqueta de Cuero Biker",
+          "sizeName": "L",
+          "colorName": "Negro",
+          "price": 129.50,
+          "imageUrl": "https://images.unsplash.com/photo-1551028719-00167b16eac5?w=500&auto=format&fit=crop&q=60"
+        },
+        {
+          "id": "item-4",
+          "variantId": "var-10",
+          "sku": "PAN-AZU-L",
+          "barcode": "77040004002",
+          "garmentName": "Pantalón Chino Clásico",
+          "sizeName": "L",
+          "colorName": "Azul Marino",
+          "price": 55.00,
+          "imageUrl": "https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?w=500&auto=format&fit=crop&q=60"
+        }
+      ],
+      "assignedStaffName": "Andrés Bodeguero",
+      "notes": "Separado en perchero #3.",
+      "createdAt": "2026-09-14T13:00:00Z",
+      "updatedAt": "2026-09-14T15:10:00Z"
+    },
+    {
+      "id": "res-3",
+      "reservationCode": "RES-1035",
+      "clientId": "cli-3",
+      "clientName": "Sofía Rodríguez",
+      "clientPhone": "+591 75544332",
+      "branchId": "branch-1",
+      "branchName": "Sucursal Central",
+      "scheduledTime": "2026-09-14T15:15:00Z",
+      "status": "READY",
+      "items": [
+        {
+          "id": "item-5",
+          "variantId": "var-3",
+          "sku": "VES-ROJ-S",
+          "barcode": "77010001003",
+          "garmentName": "Vestido de Gala Satinado",
+          "sizeName": "S",
+          "colorName": "Rojo Rubí",
+          "price": 94.99,
+          "imageUrl": "https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=500&auto=format&fit=crop&q=60"
+        }
+      ],
+      "notes": "Probador 2 asignado y aromatizado.",
+      "createdAt": "2026-09-14T11:20:00Z",
+      "updatedAt": "2026-09-14T14:50:00Z"
+    },
+    {
+      "id": "res-4",
+      "reservationCode": "RES-1028",
+      "clientId": "cli-4",
+      "clientName": "Alejandro Gómez",
+      "clientPhone": "+591 73322114",
+      "branchId": "branch-1",
+      "branchName": "Sucursal Central",
+      "scheduledTime": "2026-09-14T15:00:00Z",
+      "status": "CLIENT_PRESENT",
+      "items": [
+        {
+          "id": "item-6",
+          "variantId": "var-5",
+          "sku": "CAM-BLA-M",
+          "barcode": "77020002002",
+          "garmentName": "Camisa Oxford Slim Fit",
+          "sizeName": "M",
+          "colorName": "Blanco",
+          "price": 45.00,
+          "imageUrl": "https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?w=500&auto=format&fit=crop&q=60"
+        },
+        {
+          "id": "item-7",
+          "variantId": "var-9",
+          "sku": "PAN-BEI-M",
+          "barcode": "77040004001",
+          "garmentName": "Pantalón Chino Clásico",
+          "sizeName": "M",
+          "colorName": "Beige",
+          "price": 55.00,
+          "imageUrl": "https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?w=500&auto=format&fit=crop&q=60"
+        }
+      ],
+      "notes": "Cliente ya probó las prendas, listo para facturación.",
+      "createdAt": "2026-09-14T10:00:00Z",
+      "updatedAt": "2026-09-14T15:05:00Z"
+    }
+  ],
+  "roles": [
+    { "id": "rol-1", "nombre": "ADMIN", "descripcion": "Administrador global del sistema", "creado_en": "2026-01-01T00:00:00Z" },
+    { "id": "rol-2", "nombre": "ENCARGADO", "descripcion": "Encargado de tienda y probadores", "creado_en": "2026-01-01T00:00:00Z" },
+    { "id": "rol-3", "nombre": "CAJERO", "descripcion": "Operador de punto de venta POS", "creado_en": "2026-01-01T00:00:00Z" },
+    { "id": "rol-4", "nombre": "PROVEEDOR", "descripcion": "Proveedor externo de prendas", "creado_en": "2026-01-01T00:00:00Z" },
+    { "id": "rol-5", "nombre": "CLIENTE", "descripcion": "Cliente final omnicanal", "creado_en": "2026-01-01T00:00:00Z" }
+  ],
+  "usuarios": [
+    {
+      "id": "user-1",
+      "nombre": "Carlos",
+      "apellido": "Administrador",
+      "email": "admin@fashionstore.com",
+      "password_hash": "$2b$10$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW",
+      "rol_id": "rol-1",
+      "estado": "ACTIVO",
+      "foto_url": "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150",
+      "creado_en": "2026-01-01T08:00:00Z",
+      "actualizado_en": "2026-03-01T12:00:00Z"
+    },
+    {
+      "id": "user-2",
+      "nombre": "Laura",
+      "apellido": "Gerente",
+      "email": "manager@fashionstore.com",
+      "password_hash": "$2b$10$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW",
+      "rol_id": "rol-2",
+      "estado": "ACTIVO",
+      "foto_url": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150",
+      "creado_en": "2026-01-05T08:00:00Z",
+      "actualizado_en": "2026-03-01T12:00:00Z"
+    },
+    {
+      "id": "user-3",
+      "nombre": "Santiago",
+      "apellido": "Cajero",
+      "email": "cajero@fashionstore.com",
+      "password_hash": "$2b$10$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW",
+      "rol_id": "rol-3",
+      "estado": "ACTIVO",
+      "foto_url": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150",
+      "creado_en": "2026-01-10T08:00:00Z",
+      "actualizado_en": "2026-03-01T12:00:00Z"
+    },
+    {
+      "id": "user-4",
+      "nombre": "Mariana",
+      "apellido": "López",
+      "email": "cliente@fashionstore.com",
+      "password_hash": "$2b$10$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW",
+      "rol_id": "rol-5",
+      "estado": "ACTIVO",
+      "foto_url": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
+      "creado_en": "2026-02-01T10:00:00Z",
+      "actualizado_en": "2026-03-01T12:00:00Z"
+    }
+  ],
+  "direcciones": [
+    {
+      "id": "dir-1",
+      "usuario_id": "user-1",
+      "nombre": "Oficina Central",
+      "direccion": "Av. Principal # 100, Zona Comercial",
+      "ciudad": "Santa Cruz de la Sierra",
+      "estado": "Santa Cruz",
+      "codigo_postal": "0000",
+      "pais": "Bolivia",
+      "es_principal": true,
+      "creado_en": "2026-01-01T08:00:00Z"
+    },
+    {
+      "id": "dir-2",
+      "usuario_id": "user-4",
+      "nombre": "Casa",
+      "direccion": "Av. San Martín, Condominio Los Tajibos #4B",
+      "ciudad": "Santa Cruz de la Sierra",
+      "estado": "Santa Cruz",
+      "codigo_postal": "0000",
+      "pais": "Bolivia",
+      "es_principal": true,
+      "creado_en": "2026-02-01T08:00:00Z"
+    }
+  ],
+  "categorias": [
+    {
+      "id": "cat-1",
+      "nombre": "Camisas & Blusas",
+      "descripcion": "Prendas superiores formales e informales",
+      "imagen_url": "https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?w=500",
+      "categoria_padre_id": null,
+      "creado_en": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "cat-2",
+      "nombre": "Pantalones & Jeans",
+      "descripcion": "Pantalones de mezclilla, chinos y de vestir",
+      "imagen_url": "https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?w=500",
+      "categoria_padre_id": null,
+      "creado_en": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "cat-3",
+      "nombre": "Vestidos",
+      "descripcion": "Vestidos de gala, fiesta y casuales",
+      "imagen_url": "https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=500",
+      "categoria_padre_id": null,
+      "creado_en": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "cat-4",
+      "nombre": "Chaquetas & Abrigos",
+      "descripcion": "Prendas de abrigo para media estación e invierno",
+      "imagen_url": "https://images.unsplash.com/photo-1507679799987-c73779587ccf?w=500",
+      "categoria_padre_id": null,
+      "creado_en": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "cat-5",
+      "nombre": "Calzado",
+      "descripcion": "Zapatos formales, zapatillas y tacones",
+      "imagen_url": "https://images.unsplash.com/photo-1614252235316-8c857d38b5f4?w=500",
+      "categoria_padre_id": null,
+      "creado_en": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "cat-6",
+      "nombre": "Accesorios",
+      "descripcion": "Bolsos, cinturones y carteras",
+      "imagen_url": "https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=500",
+      "categoria_padre_id": null,
+      "creado_en": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "cat-7",
+      "nombre": "Vestidos de Noche",
+      "descripcion": "Alta etiqueta y satén",
+      "imagen_url": "https://images.unsplash.com/photo-1566174053879-31528523f8ae?w=500",
+      "categoria_padre_id": "cat-3",
+      "creado_en": "2026-01-05T00:00:00Z"
+    }
+  ],
+  "productos": [
+    {
+      "id": "prod-1",
+      "nombre": "Vestido de Gala Satinado",
+      "descripcion": "Vestido largo confeccionado en satén de seda con corte evasé y escote pronunciado.",
+      "precio": 89.99,
+      "stock": 22,
+      "categoria_id": "cat-3",
+      "imagen_url": "https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=500&auto=format&fit=crop&q=60",
+      "estado": "ACTIVO",
+      "creado_en": "2026-02-15T08:00:00Z",
+      "actualizado_en": "2026-03-01T10:00:00Z"
+    },
+    {
+      "id": "prod-2",
+      "nombre": "Blazer Ejecutivo Slim Fit",
+      "descripcion": "Blazer entallado para oficina y eventos formales confeccionado en lana fría.",
+      "precio": 119.50,
+      "stock": 14,
+      "categoria_id": "cat-4",
+      "imagen_url": "https://images.unsplash.com/photo-1507679799987-c73779587ccf?w=500&auto=format&fit=crop&q=60",
+      "estado": "ACTIVO",
+      "creado_en": "2026-02-16T09:00:00Z",
+      "actualizado_en": "2026-03-01T10:00:00Z"
+    },
+    {
+      "id": "prod-3",
+      "nombre": "Camisa Oxford Classic Pure Cotton",
+      "descripcion": "Camisa manga larga en tejido Oxford 100% algodón peinado con cuello abotonado.",
+      "precio": 45.00,
+      "stock": 55,
+      "categoria_id": "cat-1",
+      "imagen_url": "https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?w=500&auto=format&fit=crop&q=60",
+      "estado": "ACTIVO",
+      "creado_en": "2026-02-17T09:00:00Z",
+      "actualizado_en": "2026-03-01T10:00:00Z"
+    },
+    {
+      "id": "prod-4",
+      "nombre": "Pantalón Chino Confort Flex",
+      "descripcion": "Pantalón chino moderno de corte recto con tiro medio confeccionado en sarga de algodón elástico.",
+      "precio": 52.00,
+      "stock": 29,
+      "categoria_id": "cat-2",
+      "imagen_url": "https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?w=500&auto=format&fit=crop&q=60",
+      "estado": "ACTIVO",
+      "creado_en": "2026-02-18T10:00:00Z",
+      "actualizado_en": "2026-03-01T10:00:00Z"
+    },
+    {
+      "id": "prod-5",
+      "nombre": "Zapatos Oxford de Cuero Legítimo",
+      "descripcion": "Calzado formal de cuero vacuno de primera capa con suela de goma antideslizante.",
+      "precio": 95.00,
+      "stock": 14,
+      "categoria_id": "cat-5",
+      "imagen_url": "https://images.unsplash.com/photo-1614252235316-8c857d38b5f4?w=500&auto=format&fit=crop&q=60",
+      "estado": "ACTIVO",
+      "creado_en": "2026-02-19T11:00:00Z",
+      "actualizado_en": "2026-03-01T10:00:00Z"
+    },
+    {
+      "id": "prod-6",
+      "nombre": "Cartera Tote Leather Bag",
+      "descripcion": "Bolso tote espacioso con asas reforzadas y compartimento acolchado para portátil.",
+      "precio": 68.00,
+      "stock": 24,
+      "categoria_id": "cat-6",
+      "imagen_url": "https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=500&auto=format&fit=crop&q=60",
+      "estado": "ACTIVO",
+      "creado_en": "2026-02-20T12:00:00Z",
+      "actualizado_en": "2026-03-01T10:00:00Z"
+    }
+  ],
+  "imagenes_productos": [
+    { "id": "img-1", "producto_id": "prod-1", "url": "https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=800", "es_principal": true, "orden": 1, "creado_en": "2026-02-15T08:00:00Z" },
+    { "id": "img-2", "producto_id": "prod-1", "url": "https://images.unsplash.com/photo-1566174053879-31528523f8ae?w=800", "es_principal": false, "orden": 2, "creado_en": "2026-02-15T08:00:00Z" },
+    { "id": "img-3", "producto_id": "prod-2", "url": "https://images.unsplash.com/photo-1507679799987-c73779587ccf?w=800", "es_principal": true, "orden": 1, "creado_en": "2026-02-16T09:00:00Z" },
+    { "id": "img-4", "producto_id": "prod-3", "url": "https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?w=800", "es_principal": true, "orden": 1, "creado_en": "2026-02-17T09:00:00Z" },
+    { "id": "img-5", "producto_id": "prod-4", "url": "https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?w=800", "es_principal": true, "orden": 1, "creado_en": "2026-02-18T10:00:00Z" },
+    { "id": "img-6", "producto_id": "prod-5", "url": "https://images.unsplash.com/photo-1614252235316-8c857d38b5f4?w=800", "es_principal": true, "orden": 1, "creado_en": "2026-02-19T11:00:00Z" },
+    { "id": "img-7", "producto_id": "prod-6", "url": "https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=800", "es_principal": true, "orden": 1, "creado_en": "2026-02-20T12:00:00Z" }
+  ],
+  "carritos": [
+    { "id": "cart-1", "usuario_id": "user-4", "estado": "ACTIVO", "creado_en": "2026-03-01T10:00:00Z", "actualizado_en": "2026-03-01T10:00:00Z" }
+  ],
+  "carrito_items": [
+    { "id": "ci-1", "carrito_id": "cart-1", "producto_id": "prod-1", "cantidad": 1, "precio_unitario": 89.99, "creado_en": "2026-03-01T10:00:00Z" }
+  ],
+  "ordenes": [
+    {
+      "id": "ord-1",
+      "usuario_id": "user-4",
+      "direccion_id": "dir-2",
+      "estado": "PAGADO",
+      "subtotal": 164.50,
+      "impuestos": 0.00,
+      "total": 164.50,
+      "metodo_pago": "TARJETA",
+      "referencia_pago": "PAY-STRIPE-891230",
+      "creado_en": "2026-03-01T11:00:00Z",
+      "actualizado_en": "2026-03-01T11:05:00Z"
+    }
+  ],
+  "orden_items": [
+    { "id": "oi-1", "orden_id": "ord-1", "producto_id": "prod-2", "cantidad": 1, "precio_unitario": 119.50, "subtotal": 119.50 },
+    { "id": "oi-2", "orden_id": "ord-1", "producto_id": "prod-3", "cantidad": 1, "precio_unitario": 45.00, "subtotal": 45.00 }
+  ],
+  "pagos": [
+    {
+      "id": "pago-1",
+      "orden_id": "ord-1",
+      "proveedor": "CYBERSOURCE",
+      "monto": 164.50,
+      "estado": "EXITOSO",
+      "referencia": "AUTH-458920",
+      "metadata": { "cardLast4": "9012", "brand": "Visa" },
+      "creado_en": "2026-03-01T11:01:00Z"
+    }
+  ],
+  "interacciones_ia": [
+    {
+      "id": "ia-1",
+      "usuario_id": "user-4",
+      "tipo": "RECOMENDACION",
+      "entrada": "Sugerir outfit formal para gala de noche",
+      "respuesta": "Te recomiendo el Vestido de Gala Satinado o el Blazer Ejecutivo Slim Fit con Zapatos Oxford.",
+      "modelo": "gemini-1.5-flash",
+      "tokens": 145,
+      "created_at": "2026-03-01T12:00:00Z"
+    }
+  ],
+  "feedback_ia": [
+    {
+      "id": "fb-1",
+      "interaccion_id": "ia-1",
+      "valoracion": 5,
+      "comentario": "Excelente sugerencia, me encantó el corte del blazer.",
+      "creado_en": "2026-03-01T12:05:00Z"
+    }
+  ],
+  "sales": []
+}

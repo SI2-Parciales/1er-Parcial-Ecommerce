@@ -22,6 +22,8 @@ import {
 } from '@nestjs/swagger';
 import { ACTOR_ROLE } from '../auth/auth.constants.js';
 import { MinRole } from '../auth/decorators/min-role.decorator.js';
+import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
+import type { AuthenticatedUser } from '../auth/guards/jwt-auth.guard.js';
 import {
   DeactivateUserResponseDto,
   ListUsersQueryDto,
@@ -40,6 +42,24 @@ import { UsersService } from './users.service.js';
 @MinRole(ACTOR_ROLE.ADMINISTRADOR)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
+
+  @Get('me')
+  @MinRole(ACTOR_ROLE.CLIENTE)
+  @ApiOperation({ summary: 'Consultar el perfil del usuario autenticado' })
+  @ApiOkResponse({ description: 'Datos del usuario autenticado.' })
+  async getMe(@CurrentUser() user: AuthenticatedUser) {
+    const fullUser = await this.usersService.findById(user.id);
+    return {
+      id: fullUser.id,
+      nombre: fullUser.nombre,
+      apellido: fullUser.apellido,
+      telefono: fullUser.telefono,
+      email: fullUser.email,
+      estado: fullUser.estado,
+      rol: fullUser.rol.nombre,
+      sucursalId: fullUser.sucursalId,
+    };
+  }
 
   @Get()
   @ApiOperation({ summary: 'Listar usuarios con paginación' })

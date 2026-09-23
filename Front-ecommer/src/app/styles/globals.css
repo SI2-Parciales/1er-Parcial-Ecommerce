@@ -1,0 +1,25 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/forms";
+
+@variant dark (&:where(.dark, .dark *));
+
+:root {
+  color-scheme: light !important;
+  --color-fondo: #F8FAFC;
+  --color-fondo-secundario: #FFFFFF;
+  --color-superficie: #FFFFFF;
+  --color-borde: #E2E8F0;
+  --color-borde-sutil: #F1F5F9;
+  --color-texto: #0F172A;
+  --color-texto-secundario: #475569;
+  --color-primario: #0F172A;
+  --color-acento: #2563EB;
+}
+
+html, body {
+  color-scheme: light !important;
+  background-color: var(--color-fondo);
+  color: var(--color-texto);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+

@@ -1,7 +1,8 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import {
   ApiBadRequestResponse,
+  ApiBearerAuth,
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiOkResponse,
@@ -12,6 +13,8 @@ import {
 } from '@nestjs/swagger';
 import { AuthService } from './auth.service.js';
 import { Public } from './decorators/public.decorator.js';
+import { CurrentUser } from './decorators/current-user.decorator.js';
+import type { AuthenticatedUser } from './guards/jwt-auth.guard.js';
 import { AuthResponseDto } from './dto/auth-response.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
@@ -20,6 +23,15 @@ import { RegisterDto } from './dto/register.dto.js';
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
+
+  @Get('me')
+  @ApiBearerAuth('bearerAuth')
+  @ApiOperation({ summary: 'Consultar perfil del usuario autenticado' })
+  @ApiOkResponse({ description: 'Datos del usuario autenticado.' })
+  @ApiUnauthorizedResponse({ description: 'Falta un token válido o la cuenta está inactiva.' })
+  getMe(@CurrentUser() user: AuthenticatedUser) {
+    return this.authService.getMe(user.id);
+  }
 
   @Post('register')
   @Public()

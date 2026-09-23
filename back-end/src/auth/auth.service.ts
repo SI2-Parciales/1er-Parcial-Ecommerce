@@ -75,6 +75,20 @@ export class AuthService {
     return this.buildResponse('Inicio de sesión exitoso.', user);
   }
 
+  async getMe(userId: number) {
+    const user = await this.usersService.findById(userId);
+    return {
+      id: user.id,
+      nombre: user.nombre,
+      apellido: user.apellido,
+      telefono: user.telefono,
+      email: user.email,
+      estado: user.estado,
+      rol: user.rol.nombre,
+      sucursalId: user.sucursalId,
+    };
+  }
+
   private normalizeEmail(email: string): string {
     return email.trim().toLowerCase();
   }

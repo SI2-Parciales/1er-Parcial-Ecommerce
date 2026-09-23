@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   Logger,
+  Optional,
   PayloadTooLargeException,
   UnsupportedMediaTypeException,
 } from '@nestjs/common';
@@ -33,9 +34,9 @@ export class ProductImagesStorageService {
   private readonly logger = new Logger(ProductImagesStorageService.name);
   private readonly directory: string;
 
-  constructor(config: ConfigService<AppEnvironment>) {
+  constructor(@Optional() config?: ConfigService<AppEnvironment>) {
     this.directory = resolveProductImagesDirectory(
-      config.get<string>('PRODUCT_IMAGES_DIR'),
+      config?.get<string>('PRODUCT_IMAGES_DIR') || process.env.PRODUCT_IMAGES_DIR || 'uploads/productos',
     );
   }
 
