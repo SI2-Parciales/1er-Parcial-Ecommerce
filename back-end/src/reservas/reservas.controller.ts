@@ -38,7 +38,7 @@ import { ReservasService } from './reservas.service.js';
 @ApiBearerAuth('bearerAuth')
 @ApiUnauthorizedResponse({ description: 'Se requiere un token válido.' })
 @ApiForbiddenResponse({
-  description: 'Solo los clientes pueden gestionar reservas.',
+  description: 'El rol no tiene permiso para esta operación.',
 })
 @ApiBadRequestResponse({ description: 'Los datos enviados no son válidos.' })
 @Controller('reservas')
@@ -66,7 +66,11 @@ export class ReservasController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Listar las reservas del cliente autenticado' })
+  @ApiOperation({
+    summary: 'Listar reservas según el alcance del usuario autenticado',
+    description:
+      'El cliente consulta las propias, el encargado las de su sucursal y el administrador puede consultar todas.',
+  })
   @ApiOkResponse({
     description: 'Reservas y metadatos de paginación.',
     type: ReservaListResponseDto,
@@ -79,7 +83,10 @@ export class ReservasController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Consultar el detalle de una reserva propia' })
+  @ApiOperation({
+    summary:
+      'Consultar el detalle de una reserva dentro del alcance autorizado',
+  })
   @ApiOkResponse({
     description: 'Reserva encontrada.',
     type: ReservaDetailDto,
@@ -138,5 +145,50 @@ export class ReservasController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.reservasService.cancel(id, user);
+  }
+
+  @Patch(':id/iniciar-preparacion')
+  @MinRole(ACTOR_ROLE.ENCARGADO_SUCURSAL)
+  @ApiOperation({
+    summary: 'Iniciar preparación de una reserva pendiente de la sucursal',
+  })
+  @ApiOkResponse({
+    description: 'Reserva en proceso.',
+    type: ReservaDetailDto,
+  })
+  @ApiNotFoundResponse({
+    description: 'La reserva no existe dentro de la sucursal asignada.',
+  })
+  @ApiConflictResponse({
+    description: 'La reserva no está pendiente.',
+  })
+  iniciarPreparacion(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.reservasService.startPreparation(id, user);
+  }
+
+  @Patch(':id/finalizar')
+  @MinRole(ACTOR_ROLE.ENCARGADO_SUCURSAL)
+  @ApiOperation({
+    summary: 'Finalizar atención de una reserva en proceso',
+  })
+  @ApiOkResponse({
+    description: 'Reserva finalizada y unidades retenidas liberadas.',
+    type: ReservaDetailDto,
+  })
+  @ApiNotFoundResponse({
+    description: 'La reserva no existe dentro de la sucursal asignada.',
+  })
+  @ApiConflictResponse({
+    description:
+      'La reserva no está en proceso o no se pudo liberar el inventario.',
+  })
+  finalizar(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.reservasService.finalize(id, user);
   }
 }

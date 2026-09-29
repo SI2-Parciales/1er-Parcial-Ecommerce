@@ -5,6 +5,7 @@ import {
   ArrayMinSize,
   IsArray,
   IsDateString,
+  IsEnum,
   IsInt,
   IsOptional,
   Max,
@@ -81,6 +82,27 @@ export class ListReservasQueryDto {
   @Min(1)
   @Max(100)
   limit = 20;
+
+  @ApiPropertyOptional({ enum: EstadoReserva })
+  @IsOptional()
+  @IsEnum(EstadoReserva)
+  estado?: EstadoReserva;
+
+  @ApiPropertyOptional({ type: Number, example: 2, minimum: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(MAX_POSTGRES_INTEGER)
+  sucursalId?: number;
+
+  @ApiPropertyOptional({ type: Number, example: 12, minimum: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(MAX_POSTGRES_INTEGER)
+  clienteId?: number;
 }
 
 export class ReservaSucursalDto {
@@ -149,6 +171,20 @@ export class ReservaDetalleResponseDto {
   varianteProducto!: ReservaVarianteDto;
 }
 
+export class ReservaClienteDto {
+  @ApiProperty({ example: 7 })
+  id!: number;
+
+  @ApiProperty({ example: 'Ana' })
+  nombre!: string;
+
+  @ApiProperty({ example: 'Pérez' })
+  apellido!: string;
+
+  @ApiProperty({ example: '70000000' })
+  telefono!: string;
+}
+
 export class ReservaListItemDto {
   @ApiProperty({ example: 31 })
   id!: number;
@@ -167,6 +203,9 @@ export class ReservaListItemDto {
 
   @ApiProperty({ type: ReservaSucursalDto })
   sucursal!: ReservaSucursalDto;
+
+  @ApiProperty({ type: ReservaClienteDto })
+  cliente!: ReservaClienteDto;
 }
 
 export class ReservaDetailDto extends ReservaListItemDto {

@@ -54,6 +54,7 @@ describe('ReservasService', () => {
         findMany: vi.fn().mockResolvedValue([]),
         count: vi.fn().mockResolvedValue(0),
       },
+      usuario: { findUnique: vi.fn() },
     };
     variantesService = {
       resolveActiveForPurchase: vi
@@ -152,7 +153,7 @@ describe('ReservasService', () => {
     expect(transaction.reserva.create).not.toHaveBeenCalled();
   });
 
-  it('rechaza solicitudes inválidas y actores que no son clientes', async () => {
+  it('rechaza solicitudes inválidas y protege roles que no consultan reservas', async () => {
     await expect(
       service.create(
         { sucursalId: 3, fechaHora: 'invalid', items: [] },
@@ -162,9 +163,269 @@ describe('ReservasService', () => {
     await expect(
       service.findAll(
         { page: 1, limit: 20 },
-        { ...client, role: ACTOR_ROLE.ADMINISTRADOR },
+        { ...client, role: ACTOR_ROLE.CAJERO },
       ),
     ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('mantiene las consultas de cliente limitadas a sus reservas', async () => {
+    await service.findAll({ page: 1, limit: 20 }, client);
+    expect(prisma.reserva.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { clienteId: client.id } }),
+    );
+  });
+
+  it('limita consultas de encargado a su sucursal y rechaza otra sucursal', async () => {
+    prisma.usuario.findUnique.mockResolvedValue({
+      id: 21,
+      estado: 'ACTIVO',
+      sucursalId: 3,
+      rol: { nombre: ACTOR_ROLE.ENCARGADO_SUCURSAL },
+    });
+    const manager = { ...client, id: 21, role: ACTOR_ROLE.ENCARGADO_SUCURSAL };
+    await service.findAll(
+      { page: 1, limit: 20, estado: EstadoReserva.PENDIENTE },
+      manager,
+    );
+    expect(prisma.reserva.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { sucursalId: 3, estado: EstadoReserva.PENDIENTE },
+      }),
+    );
+    await expect(
+      service.findAll({ page: 1, limit: 20, sucursalId: 99 }, manager),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('permite al administrador consultar globalmente y aplicar filtros', async () => {
+    const administrator = { ...client, role: ACTOR_ROLE.ADMINISTRADOR };
+    await service.findAll(
+      {
+        page: 1,
+        limit: 20,
+        sucursalId: 9,
+        clienteId: 15,
+        estado: EstadoReserva.FINALIZADA,
+      },
+      administrator,
+    );
+    expect(prisma.reserva.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          sucursalId: 9,
+          clienteId: 15,
+          estado: EstadoReserva.FINALIZADA,
+        },
+      }),
+    );
+  });
+
+  it('no filtra por sucursal solicitada al consultar como cliente', async () => {
+    await service.findAll({ page: 1, limit: 20, sucursalId: 99 }, client);
+    expect(prisma.reserva.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { clienteId: client.id, sucursalId: 99 },
+      }),
+    );
+  });
+
+  it('permite iniciar preparación sin tocar inventario', async () => {
+    transaction.$queryRaw
+      .mockResolvedValueOnce([
+        {
+          id: 21,
+          estado: 'ACTIVO',
+          sucursalId: 3,
+          role: ACTOR_ROLE.ENCARGADO_SUCURSAL,
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 31,
+          estado: EstadoReserva.PENDIENTE,
+          sucursalId: 3,
+        },
+      ]);
+    const manager = { ...client, id: 21, role: ACTOR_ROLE.ENCARGADO_SUCURSAL };
+
+    await service.startPreparation(31, manager);
+
+    expect(transaction.reserva.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 31 },
+        data: expect.objectContaining({ estado: EstadoReserva.EN_PROCESO }),
+      }),
+    );
+    expect(inventarioService.releaseCustomerReservation).not.toHaveBeenCalled();
+  });
+
+  it('rechaza iniciar preparación si la reserva no pertenece a la sucursal', async () => {
+    transaction.$queryRaw
+      .mockResolvedValueOnce([
+        {
+          id: 21,
+          estado: 'ACTIVO',
+          sucursalId: 3,
+          role: ACTOR_ROLE.ENCARGADO_SUCURSAL,
+        },
+      ])
+      .mockResolvedValueOnce([]);
+    const manager = { ...client, id: 21, role: ACTOR_ROLE.ENCARGADO_SUCURSAL };
+    await expect(service.startPreparation(31, manager)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(transaction.reserva.update).not.toHaveBeenCalled();
+  });
+
+  it('rechaza al encargado sin sucursal asignada', async () => {
+    transaction.$queryRaw.mockResolvedValueOnce([
+      {
+        id: 21,
+        estado: 'ACTIVO',
+        sucursalId: null,
+        role: ACTOR_ROLE.ENCARGADO_SUCURSAL,
+      },
+    ]);
+    const manager = { ...client, id: 21, role: ACTOR_ROLE.ENCARGADO_SUCURSAL };
+    await expect(service.startPreparation(31, manager)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(transaction.reserva.update).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    EstadoReserva.CANCELADA,
+    EstadoReserva.EN_PROCESO,
+    EstadoReserva.FINALIZADA,
+  ])('no permite iniciar desde el estado %s', async (estado) => {
+    transaction.$queryRaw
+      .mockResolvedValueOnce([
+        {
+          id: 21,
+          estado: 'ACTIVO',
+          sucursalId: 3,
+          role: ACTOR_ROLE.ENCARGADO_SUCURSAL,
+        },
+      ])
+      .mockResolvedValueOnce([{ id: 31, estado, sucursalId: 3 }]);
+    const manager = {
+      ...client,
+      id: 21,
+      role: ACTOR_ROLE.ENCARGADO_SUCURSAL,
+    };
+    await expect(service.startPreparation(31, manager)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(transaction.reserva.update).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    EstadoReserva.CANCELADA,
+    EstadoReserva.PENDIENTE,
+    EstadoReserva.FINALIZADA,
+  ])('no permite finalizar desde el estado %s', async (estado) => {
+    transaction.$queryRaw
+      .mockResolvedValueOnce([
+        {
+          id: 21,
+          estado: 'ACTIVO',
+          sucursalId: 3,
+          role: ACTOR_ROLE.ENCARGADO_SUCURSAL,
+        },
+      ])
+      .mockResolvedValueOnce([{ id: 31, estado, sucursalId: 3 }]);
+    const manager = {
+      ...client,
+      id: 21,
+      role: ACTOR_ROLE.ENCARGADO_SUCURSAL,
+    };
+    await expect(service.finalize(31, manager)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(inventarioService.releaseCustomerReservation).not.toHaveBeenCalled();
+    expect(transaction.reserva.update).not.toHaveBeenCalled();
+  });
+
+  it('finaliza en proceso y libera todas las unidades dentro de la transacción', async () => {
+    transaction.$queryRaw
+      .mockResolvedValueOnce([
+        {
+          id: 21,
+          estado: 'ACTIVO',
+          sucursalId: 3,
+          role: ACTOR_ROLE.ENCARGADO_SUCURSAL,
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 31,
+          estado: EstadoReserva.EN_PROCESO,
+          sucursalId: 3,
+        },
+      ]);
+    transaction.detalleReserva.findMany.mockResolvedValue([
+      { varianteProductoId: 12, cantidad: 2 },
+      { varianteProductoId: 14, cantidad: 1 },
+    ]);
+    const manager = { ...client, id: 21, role: ACTOR_ROLE.ENCARGADO_SUCURSAL };
+
+    await service.finalize(31, manager);
+
+    expect(inventarioService.releaseCustomerReservation).toHaveBeenCalledWith(
+      transaction,
+      3,
+      [
+        { varianteProductoId: 12, cantidad: 2 },
+        { varianteProductoId: 14, cantidad: 1 },
+      ],
+    );
+    expect(transaction.reserva.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 31 },
+        data: expect.objectContaining({ estado: EstadoReserva.FINALIZADA }),
+      }),
+    );
+  });
+
+  it('revierte la finalización si no puede liberar el inventario', async () => {
+    transaction.$queryRaw
+      .mockResolvedValueOnce([
+        {
+          id: 21,
+          estado: 'ACTIVO',
+          sucursalId: 3,
+          role: ACTOR_ROLE.ENCARGADO_SUCURSAL,
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 31,
+          estado: EstadoReserva.EN_PROCESO,
+          sucursalId: 3,
+        },
+      ]);
+    transaction.detalleReserva.findMany.mockResolvedValue([
+      { varianteProductoId: 12, cantidad: 2 },
+    ]);
+    inventarioService.releaseCustomerReservation.mockRejectedValue(
+      new ConflictException('inventory'),
+    );
+    const manager = { ...client, id: 21, role: ACTOR_ROLE.ENCARGADO_SUCURSAL };
+
+    await expect(service.finalize(31, manager)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(transaction.reserva.update).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [ACTOR_ROLE.CLIENTE, ACTOR_ROLE.CLIENTE],
+    [ACTOR_ROLE.ADMINISTRADOR, ACTOR_ROLE.ADMINISTRADOR],
+  ])('no permite que el rol %s cambie estados', async (_label, role) => {
+    await expect(
+      service.startPreparation(31, { ...client, role }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('no revela reservas ajenas o inexistentes', async () => {

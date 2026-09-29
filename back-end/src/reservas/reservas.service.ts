@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { EstadoReserva, Prisma } from '@prisma/client';
 import { ACTOR_ROLE } from '../auth/auth.constants.js';
@@ -31,6 +32,13 @@ interface LockedBranchRow {
   estado: string;
 }
 
+interface CurrentActorRow {
+  id: number;
+  estado: string;
+  sucursalId: number | null;
+  role: string;
+}
+
 const reservationListSelect = {
   id: true,
   fechaHora: true,
@@ -38,6 +46,9 @@ const reservationListSelect = {
   creadoEn: true,
   actualizadoEn: true,
   sucursal: { select: { id: true, nombre: true, ubicacion: true } },
+  cliente: {
+    select: { id: true, nombre: true, apellido: true, telefono: true },
+  },
 } satisfies Prisma.ReservaSelect;
 
 const reservationDetailSelect = {
@@ -123,9 +134,8 @@ export class ReservasService {
   }
 
   async findAll(query: ListReservasQueryDto, user: AuthenticatedUser) {
-    this.assertClient(user);
+    const where = await this.buildReadFilter(query, user);
     const skip = (query.page - 1) * query.limit;
-    const where: Prisma.ReservaWhereInput = { clienteId: user.id };
     const [data, total] = await Promise.all([
       this.prisma.reserva.findMany({
         where,
@@ -140,14 +150,32 @@ export class ReservasService {
   }
 
   async findOne(id: number, user: AuthenticatedUser) {
-    this.assertClient(user);
     this.assertIdentifier(id);
+    const where = await this.buildReadFilter({}, user);
     const reservation = await this.prisma.reserva.findFirst({
-      where: { id, clienteId: user.id },
+      where: { ...where, id },
       select: reservationDetailSelect,
     });
     if (!reservation) throw this.reservationNotFound();
     return reservation;
+  }
+
+  async startPreparation(id: number, user: AuthenticatedUser) {
+    return this.transitionForManager(
+      id,
+      user,
+      EstadoReserva.PENDIENTE,
+      EstadoReserva.EN_PROCESO,
+    );
+  }
+
+  async finalize(id: number, user: AuthenticatedUser) {
+    return this.transitionForManager(
+      id,
+      user,
+      EstadoReserva.EN_PROCESO,
+      EstadoReserva.FINALIZADA,
+    );
   }
 
   async updateDetail(
@@ -306,6 +334,166 @@ export class ReservasService {
         'La sucursal seleccionada debe estar activa.',
       );
     }
+  }
+
+  private async buildReadFilter(
+    query: Partial<ListReservasQueryDto>,
+    user: AuthenticatedUser,
+  ): Promise<Prisma.ReservaWhereInput> {
+    const where: Prisma.ReservaWhereInput = {};
+    switch (user.role) {
+      case ACTOR_ROLE.CLIENTE:
+        where.clienteId = user.id;
+        if (query.clienteId !== undefined && query.clienteId !== user.id) {
+          throw new ForbiddenException(
+            'Solo puedes consultar tus propias reservas.',
+          );
+        }
+        if (query.clienteId !== undefined) where.clienteId = query.clienteId;
+        if (query.sucursalId !== undefined) {
+          where.sucursalId = query.sucursalId;
+        }
+        break;
+      case ACTOR_ROLE.ENCARGADO_SUCURSAL: {
+        const branchId = await this.getManagerBranch(user.id);
+        if (query.sucursalId !== undefined && query.sucursalId !== branchId) {
+          throw new ForbiddenException(
+            'Solo puedes consultar reservas de tu sucursal asignada.',
+          );
+        }
+        where.sucursalId = branchId;
+        if (query.clienteId !== undefined) where.clienteId = query.clienteId;
+        break;
+      }
+      case ACTOR_ROLE.ADMINISTRADOR:
+        if (query.sucursalId !== undefined) {
+          where.sucursalId = query.sucursalId;
+        }
+        if (query.clienteId !== undefined) where.clienteId = query.clienteId;
+        break;
+      default:
+        throw new ForbiddenException('Tu rol no puede consultar reservas.');
+    }
+    if (query.estado !== undefined) where.estado = query.estado;
+    return where;
+  }
+
+  private async getManagerBranch(userId: number): Promise<number> {
+    const actor = await this.prisma.usuario.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        estado: true,
+        sucursalId: true,
+        rol: { select: { nombre: true } },
+      },
+    });
+    if (!actor || actor.estado !== ACTIVE_STATUS) {
+      throw new UnauthorizedException('La cuenta no está disponible.');
+    }
+    if (actor.rol.nombre !== ACTOR_ROLE.ENCARGADO_SUCURSAL) {
+      throw new ForbiddenException(
+        'Solo los encargados pueden consultar reservas de sucursal.',
+      );
+    }
+    if (actor.sucursalId === null) {
+      throw new ForbiddenException(
+        'El encargado no tiene una sucursal asignada.',
+      );
+    }
+    return actor.sucursalId;
+  }
+
+  private async transitionForManager(
+    id: number,
+    user: AuthenticatedUser,
+    expected: EstadoReserva,
+    next: EstadoReserva,
+  ) {
+    this.assertIdentifier(id);
+    if (user.role !== ACTOR_ROLE.ENCARGADO_SUCURSAL) {
+      throw new ForbiddenException(
+        'Solo los encargados de sucursal pueden cambiar el estado de una reserva.',
+      );
+    }
+    return this.prisma.$transaction(async (transaction) => {
+      const actor = await this.lockManagerActor(transaction, user.id);
+      const reservation = await this.lockReservationForBranch(
+        transaction,
+        id,
+        actor.sucursalId!,
+      );
+      if (reservation.estado !== expected) {
+        throw new ConflictException(
+          `La reserva debe estar ${expected} para pasar a ${next}.`,
+        );
+      }
+      if (next === EstadoReserva.FINALIZADA) {
+        const details = await transaction.detalleReserva.findMany({
+          where: { reservaId: id },
+          orderBy: { varianteProductoId: 'asc' },
+          select: { varianteProductoId: true, cantidad: true },
+        });
+        await this.inventarioService.releaseCustomerReservation(
+          transaction,
+          actor.sucursalId!,
+          details,
+        );
+      }
+      await transaction.reserva.update({
+        where: { id },
+        data: { estado: next, actualizadoEn: new Date() },
+      });
+      return this.getDetailedReservation(transaction, id);
+    });
+  }
+
+  private async lockManagerActor(
+    transaction: Prisma.TransactionClient,
+    userId: number,
+  ): Promise<CurrentActorRow> {
+    const rows = await transaction.$queryRaw<CurrentActorRow[]>`
+      SELECT
+        u."id" AS "id",
+        u."estado" AS "estado",
+        u."sucursal_id" AS "sucursalId",
+        r."nombre" AS "role"
+      FROM "usuarios" AS u
+      INNER JOIN "roles" AS r ON r."id" = u."rol_id"
+      WHERE u."id" = ${userId}
+      FOR SHARE OF u
+    `;
+    const actor = rows[0];
+    if (!actor || actor.estado !== ACTIVE_STATUS) {
+      throw new UnauthorizedException('La cuenta no está disponible.');
+    }
+    if (actor.role !== ACTOR_ROLE.ENCARGADO_SUCURSAL) {
+      throw new ForbiddenException(
+        'Solo los encargados de sucursal pueden cambiar el estado de una reserva.',
+      );
+    }
+    if (actor.sucursalId === null) {
+      throw new ForbiddenException(
+        'El encargado no tiene una sucursal asignada.',
+      );
+    }
+    return actor;
+  }
+
+  private async lockReservationForBranch(
+    transaction: Prisma.TransactionClient,
+    id: number,
+    branchId: number,
+  ): Promise<LockedReservationRow> {
+    const rows = await transaction.$queryRaw<LockedReservationRow[]>`
+      SELECT "id", "estado", "sucursal_id" AS "sucursalId"
+      FROM "reservas"
+      WHERE "id" = ${id} AND "sucursal_id" = ${branchId}
+      FOR UPDATE
+    `;
+    const reservation = rows[0];
+    if (!reservation) throw this.reservationNotFound();
+    return reservation;
   }
 
   private async lockOwnedReservation(
