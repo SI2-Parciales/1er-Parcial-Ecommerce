@@ -652,6 +652,90 @@ describe('InventarioService', () => {
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
+  it('reserva stock con bloqueo exclusivo y actualiza cantidad_reservada', async () => {
+    transaction.$queryRaw.mockResolvedValue([
+      {
+        id: 30,
+        sucursalId: 2,
+        varianteProductoId: 8,
+        cantidadFisica: 10,
+        cantidadReservada: 2,
+        cantidadNoDisponible: 3,
+      },
+    ]);
+
+    await service.reserveForCustomer(transaction as never, 2, [
+      { varianteProductoId: 8, cantidad: 4 },
+    ]);
+
+    expect(transaction.inventario.update).toHaveBeenCalledWith({
+      where: { id: 30 },
+      data: { cantidadReservada: { increment: 4 } },
+    });
+    expect(transaction.$queryRaw.mock.calls[0][0].strings.join(' ')).toContain(
+      'FOR UPDATE',
+    );
+  });
+
+  it('no incrementa reservas si alguna variante carece de disponibilidad', async () => {
+    transaction.$queryRaw.mockResolvedValue([
+      {
+        id: 30,
+        sucursalId: 2,
+        varianteProductoId: 8,
+        cantidadFisica: 10,
+        cantidadReservada: 2,
+        cantidadNoDisponible: 3,
+      },
+    ]);
+
+    await expect(
+      service.reserveForCustomer(transaction as never, 2, [
+        { varianteProductoId: 8, cantidad: 6 },
+      ]),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(transaction.inventario.update).not.toHaveBeenCalled();
+  });
+
+  it('distingue inventario inexistente de stock insuficiente', async () => {
+    transaction.$queryRaw.mockResolvedValue([]);
+
+    await expect(
+      service.reserveForCustomer(transaction as never, 2, [
+        { varianteProductoId: 8, cantidad: 1 },
+      ]),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(transaction.inventario.update).not.toHaveBeenCalled();
+  });
+
+  it('libera cantidades reservadas y rechaza liberaciones duplicadas', async () => {
+    transaction.$queryRaw.mockResolvedValue([
+      {
+        id: 30,
+        sucursalId: 2,
+        varianteProductoId: 8,
+        cantidadFisica: 10,
+        cantidadReservada: 3,
+        cantidadNoDisponible: 1,
+      },
+    ]);
+    await service.releaseCustomerReservation(transaction as never, 2, [
+      { varianteProductoId: 8, cantidad: 2 },
+    ]);
+    expect(transaction.inventario.update).toHaveBeenCalledWith({
+      where: { id: 30 },
+      data: { cantidadReservada: { decrement: 2 } },
+    });
+
+    transaction.inventario.update.mockClear();
+    await expect(
+      service.releaseCustomerReservation(transaction as never, 2, [
+        { varianteProductoId: 8, cantidad: 4 },
+      ]),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(transaction.inventario.update).not.toHaveBeenCalled();
+  });
+
   it('consulta cantidades disponibles por sucursal sin modificar inventario', async () => {
     transaction.$queryRaw.mockResolvedValue([
       { varianteProductoId: 8, cantidadDisponible: 5n },

@@ -35,6 +35,13 @@ enum EstadoPago {
   CONFIRMADO
 }
 
+enum EstadoReserva {
+  PENDIENTE
+  EN_PROCESO
+  FINALIZADA
+  CANCELADA
+}
+
 model Rol {
   id          Int       @id @default(autoincrement())
   nombre      String    @unique
@@ -63,6 +70,7 @@ model Usuario {
   ventasComoCajero      Venta[]                @relation("VentaCajero")
   ventasComoCliente     Venta[]                @relation("VentaCliente")
   carrito               Carrito?
+  reservas              Reserva[]
 
   @@index([sucursalId])
   @@map("usuarios")
@@ -82,6 +90,7 @@ model Sucursal {
   movimientosDestino MovimientoInventario[] @relation("MovimientoSucursalDestino")
   ventas             Venta[]
   carritos           Carrito[]
+  reservas           Reserva[]
 
   @@map("sucursales")
 }
@@ -148,6 +157,7 @@ model VarianteProducto {
   movimientosInventario MovimientoInventario[]
   detallesVenta         DetalleVenta[]
   detallesCarrito       DetalleCarrito[]
+  detallesReserva       DetalleReserva[]
 
   @@unique([productoId, tallaId, colorId], map: "variantes_producto_combinacion_key")
   @@index([productoId])
@@ -286,4 +296,35 @@ model DetalleCarrito {
   @@unique([carritoId, varianteProductoId], map: "detalles_carrito_carrito_variante_key")
   @@index([varianteProductoId])
   @@map("detalles_carrito")
+}
+
+model Reserva {
+  id            Int              @id @default(autoincrement())
+  clienteId     Int              @map("cliente_id")
+  sucursalId    Int              @map("sucursal_id")
+  fechaHora     DateTime         @map("fecha_hora")
+  estado        EstadoReserva    @default(PENDIENTE)
+  creadoEn      DateTime         @default(now()) @map("creado_en")
+  actualizadoEn DateTime         @default(now()) @updatedAt @map("actualizado_en")
+  cliente       Usuario          @relation(fields: [clienteId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  sucursal      Sucursal         @relation(fields: [sucursalId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  detalles      DetalleReserva[]
+
+  @@index([clienteId, creadoEn, id])
+  @@index([sucursalId, fechaHora, id])
+  @@index([estado, fechaHora, id])
+  @@map("reservas")
+}
+
+model DetalleReserva {
+  id                 Int              @id @default(autoincrement())
+  reservaId          Int              @map("reserva_id")
+  varianteProductoId Int              @map("variante_producto_id")
+  cantidad           Int
+  reserva            Reserva          @relation(fields: [reservaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  varianteProducto   VarianteProducto @relation(fields: [varianteProductoId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([reservaId, varianteProductoId], map: "detalles_reserva_reserva_variante_key")
+  @@index([varianteProductoId])
+  @@map("detalles_reserva")
 }

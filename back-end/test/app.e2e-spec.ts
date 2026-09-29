@@ -67,6 +67,8 @@ describeWithDatabase('AppController (e2e)', () => {
   });
 
   beforeEach(async () => {
+    await prisma.detalleReserva.deleteMany();
+    await prisma.reserva.deleteMany();
     await prisma.detalleCarrito.deleteMany();
     await prisma.carrito.deleteMany();
     await prisma.pago.deleteMany();
