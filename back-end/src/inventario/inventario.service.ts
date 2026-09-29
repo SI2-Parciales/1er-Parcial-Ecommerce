@@ -202,6 +202,109 @@ export class InventarioService {
     }
   }
 
+  /** Reserve stock for customer reservations while holding exclusive inventory locks. */
+  async reserveForCustomer(
+    transaction: Prisma.TransactionClient,
+    sucursalId: number,
+    requested: CantidadInventarioSolicitada[],
+  ): Promise<void> {
+    const ordered = [...requested].sort(
+      (left, right) => left.varianteProductoId - right.varianteProductoId,
+    );
+    if (ordered.length === 0) return;
+    const ids = ordered.map((item) => item.varianteProductoId);
+    const inventories = await transaction.$queryRaw<LockedAvailabilityRow[]>(
+      Prisma.sql`
+        SELECT
+          "id" AS "id",
+          "sucursal_id" AS "sucursalId",
+          "variante_producto_id" AS "varianteProductoId",
+          "cantidad_fisica" AS "cantidadFisica",
+          "cantidad_reservada" AS "cantidadReservada",
+          "cantidad_no_disponible" AS "cantidadNoDisponible"
+        FROM "inventarios"
+        WHERE "sucursal_id" = ${sucursalId}
+          AND "variante_producto_id" IN (${Prisma.join(ids)})
+        ORDER BY "variante_producto_id" ASC
+        FOR UPDATE
+      `,
+    );
+    const byVariant = new Map(
+      inventories.map((inventory) => [inventory.varianteProductoId, inventory]),
+    );
+    for (const item of ordered) {
+      const inventory = byVariant.get(item.varianteProductoId);
+      if (!inventory) {
+        throw new NotFoundException(
+          'No se encontró inventario para una variante en la sucursal seleccionada.',
+        );
+      }
+      const available =
+        inventory.cantidadFisica -
+        inventory.cantidadReservada -
+        inventory.cantidadNoDisponible;
+      if (available < item.cantidad) {
+        throw new ConflictException(
+          'No existen suficientes unidades disponibles para una de las variantes.',
+        );
+      }
+    }
+    for (const item of ordered) {
+      const inventory = byVariant.get(item.varianteProductoId)!;
+      await transaction.inventario.update({
+        where: { id: inventory.id },
+        data: { cantidadReservada: { increment: item.cantidad } },
+      });
+    }
+  }
+
+  /** Release stock previously reserved by a customer reservation. */
+  async releaseCustomerReservation(
+    transaction: Prisma.TransactionClient,
+    sucursalId: number,
+    requested: CantidadInventarioSolicitada[],
+  ): Promise<void> {
+    const ordered = [...requested].sort(
+      (left, right) => left.varianteProductoId - right.varianteProductoId,
+    );
+    if (ordered.length === 0) return;
+    const ids = ordered.map((item) => item.varianteProductoId);
+    const inventories = await transaction.$queryRaw<LockedAvailabilityRow[]>(
+      Prisma.sql`
+        SELECT
+          "id" AS "id",
+          "sucursal_id" AS "sucursalId",
+          "variante_producto_id" AS "varianteProductoId",
+          "cantidad_fisica" AS "cantidadFisica",
+          "cantidad_reservada" AS "cantidadReservada",
+          "cantidad_no_disponible" AS "cantidadNoDisponible"
+        FROM "inventarios"
+        WHERE "sucursal_id" = ${sucursalId}
+          AND "variante_producto_id" IN (${Prisma.join(ids)})
+        ORDER BY "variante_producto_id" ASC
+        FOR UPDATE
+      `,
+    );
+    const byVariant = new Map(
+      inventories.map((inventory) => [inventory.varianteProductoId, inventory]),
+    );
+    for (const item of ordered) {
+      const inventory = byVariant.get(item.varianteProductoId);
+      if (!inventory || inventory.cantidadReservada < item.cantidad) {
+        throw new ConflictException(
+          'No se pudo liberar la cantidad reservada del inventario.',
+        );
+      }
+    }
+    for (const item of ordered) {
+      const inventory = byVariant.get(item.varianteProductoId)!;
+      await transaction.inventario.update({
+        where: { id: inventory.id },
+        data: { cantidadReservada: { decrement: item.cantidad } },
+      });
+    }
+  }
+
   async applySaleOutput(
     transaction: Prisma.TransactionClient,
     sucursalId: number,

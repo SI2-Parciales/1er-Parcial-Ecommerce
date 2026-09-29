@@ -23,6 +23,7 @@ import { VentasModule } from './ventas/ventas.module.js';
 import { PagosModule } from './pagos/pagos.module.js';
 import { CarritoModule } from './carrito/carrito.module.js';
 import { ReportesModule } from './reportes/reportes.module.js';
+import { ReservasModule } from './reservas/reservas.module.js';
 
 @Module({
   imports: [
@@ -49,6 +50,7 @@ import { ReportesModule } from './reportes/reportes.module.js';
     PagosModule,
     CarritoModule,
     ReportesModule,
+    ReservasModule,
   ],
   controllers: [AppController],
   providers: [
