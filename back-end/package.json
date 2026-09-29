@@ -11,7 +11,7 @@
     "deploy": "nest deploy",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "node --env-file=.env dist/main.js",
-    "start:dev": "tsx --env-file=.env --watch src/main.ts",
+    "start:dev": "nest start --watch",
     "start:debug": "node --env-file=.env --inspect dist/main.js",
     "start:prod": "node --env-file=.env dist/main.js",
     "lint": "oxlint --type-aware src/ test/",
