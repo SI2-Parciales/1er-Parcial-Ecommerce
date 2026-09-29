@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD, Reflector } from '@nestjs/core';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule } from './auth/auth.module.js';
@@ -20,6 +20,7 @@ import { VentasModule } from './ventas/ventas.module.js';
 import { PagosModule } from './pagos/pagos.module.js';
 import { CarritoModule } from './carrito/carrito.module.js';
 import { ReportesModule } from './reportes/reportes.module.js';
+import { ReservasModule } from './reservas/reservas.module.js';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { ReportesModule } from './reportes/reportes.module.js';
     PagosModule,
     CarritoModule,
     ReportesModule,
+    ReservasModule,
   ],
   controllers: [AppController],
   providers: [
