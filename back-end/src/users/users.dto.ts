@@ -178,7 +178,7 @@ export class CreateUserDto {
 }
 
 export class ManagedUserDto {
-  @ApiProperty({ example: 12 })
+  @ApiProperty({ type: Number, example: 12 })
   id!: number;
 
   @ApiProperty({ example: 'Juan' })
@@ -204,7 +204,7 @@ export class ManagedUserDto {
   })
   sucursalId!: number | null;
 
-  @ApiProperty({ type: RoleSummaryDto })
+  @ApiProperty({ type: () => RoleSummaryDto })
   rol!: RoleSummaryDto;
 }
 
@@ -220,10 +220,10 @@ export class UserListMetaDto {
 }
 
 export class UserListResponseDto {
-  @ApiProperty({ type: [ManagedUserDto] })
+  @ApiProperty({ type: () => [ManagedUserDto] })
   data!: ManagedUserDto[];
 
-  @ApiProperty({ type: UserListMetaDto })
+  @ApiProperty({ type: () => UserListMetaDto })
   meta!: UserListMetaDto;
 }
 
@@ -231,6 +231,6 @@ export class DeactivateUserResponseDto {
   @ApiProperty({ example: 'Usuario desactivado.' })
   message!: string;
 
-  @ApiProperty({ type: ManagedUserDto })
+  @ApiProperty({ type: () => ManagedUserDto })
   user!: ManagedUserDto;
 }

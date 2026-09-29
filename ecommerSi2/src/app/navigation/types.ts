@@ -20,7 +20,15 @@ export type RootStackParamList = {
   FittingBag: undefined;
   ReservationPassModal: { reservationId: string };
   Checkout: undefined;
-  OrderSuccess: { orderId: string; status: 'PAID' | 'PENDING_MANUAL_VERIFICATION' };
+  OrderSuccess: {
+    orderId: string;
+    status: 'PAID' | 'PENDING_MANUAL_VERIFICATION' | 'RESERVED_IN_STORE';
+    type?: 'PURCHASE' | 'RESERVATION';
+    total?: number;
+    branchName?: string;
+    itemsCount?: number;
+    deliveryType?: 'PICKUP_IN_STORE' | 'HOME_DELIVERY';
+  };
   LoginModal: undefined;
   RegisterModal: undefined;
 };

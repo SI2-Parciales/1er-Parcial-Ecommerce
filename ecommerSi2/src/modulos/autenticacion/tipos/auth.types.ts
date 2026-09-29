@@ -27,8 +27,16 @@ export interface UserProfile {
 export interface AuthState {
   user: UserProfile | null;
   isAuthenticated: boolean;
-  login: (email: string, name?: string) => void;
-  register: (name: string, email: string, phone?: string) => void;
+  isLoading: boolean;
+  login: (email: string, password: string) => Promise<{ success: boolean; message?: string }>;
+  register: (data: {
+    nombre: string;
+    apellido: string;
+    telefono: string;
+    email: string;
+    password: string;
+  }) => Promise<{ success: boolean; message?: string }>;
+  checkSession: () => Promise<void>;
   logout: () => void;
 }
 

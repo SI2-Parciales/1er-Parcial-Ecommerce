@@ -4,28 +4,23 @@ import {
   Text,
   TouchableOpacity,
   ScrollView,
-  Image,
   Alert,
 } from 'react-native';
 import { ScreenContainer } from '@shared/components/ScreenContainer';
-import { Badge } from '@shared/components/Badge';
-import { Button } from '@shared/components/Button';
 import {
   User,
   MapPin,
   Calendar,
   ShoppingBag,
-  CreditCard,
-  QrCode,
   LogOut,
   ChevronRight,
   ShieldCheck,
   Phone,
   Mail,
-  Clock,
-  CheckCircle2,
-  Package,
+  Truck,
+  RotateCcw,
   Sparkles,
+  ArrowRight,
 } from 'lucide-react-native';
 import { useAuthStore } from '@modulos/autenticacion/almacen/auth.store';
 import { useBranchStore } from '@modulos/sucursales/almacen/branch.store';
@@ -61,65 +56,111 @@ export const ProfileScreen: React.FC<BottomTabTabScreenProps<'ProfileTab'>> = ({
     );
   };
 
+  // Puntos VIP calculados solo para la cuenta que ha iniciado sesión (100 puntos por cada compra)
+  const userVipPoints = isAuthenticated ? orders.length * 100 : 0;
+  const userPurchasesCount = isAuthenticated ? orders.length : 0;
+  const userReservationsCount = isAuthenticated ? reservations.length : 0;
+
   return (
     <ScreenContainer className="bg-gray-50 flex-1" style={{ flex: 1 }}>
-      {/* Header */}
-      <View className="bg-white border-b border-gray-200 px-4 pt-4 pb-3 shadow-sm">
-        <View className="flex-row items-center justify-between">
-          <Text className="text-xl font-bold text-gray-900">Mi Cuenta</Text>
+      {/* Header Superior Rediseñado */}
+      <View style={{ backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#F1F5F9', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 14 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <View>
+            <Text style={{ fontSize: 20, fontWeight: '900', color: '#0F172A' }}>Mi Cuenta</Text>
+            <Text style={{ fontSize: 11, color: '#64748B', fontWeight: '500', marginTop: 2 }}>
+              {isAuthenticated ? `Conectado como ${user?.nombre || user?.email}` : 'Modo Invitado FashionStore'}
+            </Text>
+          </View>
+
           {isAuthenticated ? (
             <TouchableOpacity
               onPress={handleLogout}
-              className="flex-row items-center bg-red-50 px-3 py-1.5 rounded-full border border-red-100"
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: '#FEF2F2',
+                paddingHorizontal: 12,
+                paddingVertical: 7,
+                borderRadius: 20,
+                borderWidth: 1,
+                borderColor: '#FEE2E2',
+              }}
+              activeOpacity={0.7}
             >
-              <LogOut size={14} color="#DC2626" />
-              <Text className="text-xs font-semibold text-red-600 ml-1">Salir</Text>
+              <LogOut size={13} color="#DC2626" />
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#DC2626', marginLeft: 4 }}>Salir</Text>
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
               onPress={() => navigation.navigate('LoginModal')}
-              className="bg-brand-primary px-3 py-1.5 rounded-full"
+              style={{
+                backgroundColor: '#0F172A',
+                paddingHorizontal: 14,
+                paddingVertical: 7,
+                borderRadius: 20,
+              }}
+              activeOpacity={0.7}
             >
-              <Text className="text-xs font-bold text-white">Iniciar Sesión</Text>
+              <Text style={{ fontSize: 11, fontWeight: '800', color: '#FFFFFF' }}>Ingresar</Text>
             </TouchableOpacity>
           )}
         </View>
 
-        {/* Segmented Control */}
-        <View className="flex-row bg-gray-100 p-1 rounded-xl mt-3">
+        {/* Segmented Control Limpio (Sin texto superpuesto ni píldoras rotas) */}
+        <View style={{ flexDirection: 'row', backgroundColor: '#F1F5F9', padding: 4, borderRadius: 14, marginTop: 14 }}>
           <TouchableOpacity
             onPress={() => {
               setActiveSegment('PROFILE');
               setSelectedOrder(null);
             }}
-            className={`flex-1 py-2 rounded-lg items-center ${
-              activeSegment === 'PROFILE' ? 'bg-white shadow-xs' : ''
-            }`}
+            style={{
+              flex: 1,
+              paddingVertical: 9,
+              borderRadius: 10,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: activeSegment === 'PROFILE' ? '#FFFFFF' : 'transparent',
+              elevation: activeSegment === 'PROFILE' ? 1 : 0,
+            }}
           >
             <Text
-              className={`text-xs font-bold ${
-                activeSegment === 'PROFILE' ? 'text-gray-900' : 'text-gray-500'
-              }`}
+              style={{
+                fontSize: 12,
+                fontWeight: '700',
+                color: activeSegment === 'PROFILE' ? '#0F172A' : '#64748B',
+              }}
             >
               Datos de Usuario
             </Text>
           </TouchableOpacity>
+
           <TouchableOpacity
             onPress={() => setActiveSegment('ORDERS')}
-            className={`flex-1 py-2 rounded-lg items-center flex-row justify-center ${
-              activeSegment === 'ORDERS' ? 'bg-white shadow-xs' : ''
-            }`}
+            style={{
+              flex: 1,
+              paddingVertical: 9,
+              borderRadius: 10,
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexDirection: 'row',
+              backgroundColor: activeSegment === 'ORDERS' ? '#FFFFFF' : 'transparent',
+              elevation: activeSegment === 'ORDERS' ? 1 : 0,
+            }}
           >
             <Text
-              className={`text-xs font-bold mr-1.5 ${
-                activeSegment === 'ORDERS' ? 'text-gray-900' : 'text-gray-500'
-              }`}
+              style={{
+                fontSize: 12,
+                fontWeight: '700',
+                color: activeSegment === 'ORDERS' ? '#0F172A' : '#64748B',
+                marginRight: 6,
+              }}
             >
               Historial de Compras
             </Text>
-            {orders.length > 0 && (
-              <View className="bg-brand-primary px-1.5 py-0.5 rounded-full">
-                <Text className="text-[10px] font-bold text-white">{orders.length}</Text>
+            {isAuthenticated && orders.length > 0 && (
+              <View style={{ backgroundColor: '#2563EB', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 10 }}>
+                <Text style={{ fontSize: 10, fontWeight: '800', color: '#FFFFFF' }}>{orders.length}</Text>
               </View>
             )}
           </TouchableOpacity>
@@ -128,348 +169,384 @@ export const ProfileScreen: React.FC<BottomTabTabScreenProps<'ProfileTab'>> = ({
 
       <ScrollView
         style={{ flex: 1 }}
-        className="flex-1 px-4 py-4"
-        contentContainerStyle={{ paddingBottom: 40 }}
+        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 40 }}
         showsVerticalScrollIndicator={false}
       >
         {activeSegment === 'PROFILE' ? (
           <>
-            {/* User Identity Card */}
+            {/* Tarjeta de Identidad del Usuario / Bienvenida */}
             {isAuthenticated && user ? (
-              <View className="bg-white rounded-2xl p-4 border border-gray-200 shadow-xs mb-4">
-                <View className="flex-row items-center">
-                  <View className="w-16 h-16 rounded-2xl bg-brand-primary/10 border border-brand-primary/20 items-center justify-center">
-                    <User size={30} color="#111827" />
+              <View
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  borderRadius: 20,
+                  padding: 18,
+                  borderWidth: 1,
+                  borderColor: '#E2E8F0',
+                  marginBottom: 16,
+                  elevation: 1,
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <View
+                    style={{
+                      width: 58,
+                      height: 58,
+                      borderRadius: 18,
+                      backgroundColor: '#EFF6FF',
+                      borderWidth: 1,
+                      borderColor: '#BFDBFE',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Text style={{ fontSize: 22, fontWeight: '900', color: '#1D4ED8' }}>
+                      {user.nombre ? user.nombre.charAt(0).toUpperCase() : 'U'}
+                    </Text>
                   </View>
-                  <View className="ml-3.5 flex-1">
-                    <View className="flex-row items-center justify-between">
-                      <Text className="text-base font-bold text-gray-900">{user.name}</Text>
-                      <Badge label="Miembro VIP" variant="warning" size="sm" />
+
+                  <View style={{ marginLeft: 14, flex: 1 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <Text style={{ fontSize: 16, fontWeight: '900', color: '#0F172A' }} numberOfLines={1}>
+                        {user.nombre} {user.apellido || ''}
+                      </Text>
+                      <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 20 }}>
+                        <Text style={{ fontSize: 10, fontWeight: '800', color: '#B45309' }}>VIP</Text>
+                      </View>
                     </View>
-                    <View className="flex-row items-center mt-1">
-                      <Mail size={12} color="#6B7280" />
-                      <Text className="text-xs text-gray-500 ml-1.5">{user.email}</Text>
+
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                      <Mail size={12} color="#64748B" />
+                      <Text style={{ fontSize: 12, color: '#64748B', marginLeft: 6 }}>{user.email}</Text>
                     </View>
-                    <View className="flex-row items-center mt-0.5">
-                      <Phone size={12} color="#6B7280" />
-                      <Text className="text-xs text-gray-500 ml-1.5">{user.phone || '+591 70000000'}</Text>
-                    </View>
+
+                    {user.phone && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 3 }}>
+                        <Phone size={12} color="#64748B" />
+                        <Text style={{ fontSize: 12, color: '#64748B', marginLeft: 6 }}>{user.phone}</Text>
+                      </View>
+                    )}
                   </View>
                 </View>
               </View>
             ) : (
-              <View className="bg-white rounded-2xl p-5 border border-gray-200 shadow-xs mb-4 items-center">
-                <View className="w-14 h-14 rounded-full bg-gray-100 items-center justify-center mb-3">
-                  <User size={26} color="#6B7280" />
+              <View
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  borderRadius: 20,
+                  padding: 22,
+                  borderWidth: 1,
+                  borderColor: '#E2E8F0',
+                  marginBottom: 16,
+                  alignItems: 'center',
+                  elevation: 1,
+                }}
+              >
+                <View
+                  style={{
+                    width: 56,
+                    height: 56,
+                    borderRadius: 28,
+                    backgroundColor: '#F1F5F9',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginBottom: 12,
+                  }}
+                >
+                  <User size={26} color="#475569" />
                 </View>
-                <Text className="text-base font-bold text-gray-900 mb-1">
+
+                <Text style={{ fontSize: 17, fontWeight: '900', color: '#0F172A', marginBottom: 4, textAlign: 'center' }}>
                   Bienvenido a FashionStore
                 </Text>
-                <Text className="text-xs text-gray-500 text-center mb-4 leading-relaxed">
-                  Inicia sesión o regístrate para sincronizar tu historial de compras, guardar tus reservas de probador y ganar beneficios VIP.
+
+                <Text style={{ fontSize: 12, color: '#64748B', textAlign: 'center', marginBottom: 16, lineHeight: 18, paddingHorizontal: 10 }}>
+                  Inicia sesión o regístrate para sincronizar tu historial de compras, tus reservas de probador y ganar beneficios VIP.
                 </Text>
-                <View className="flex-row w-full gap-2">
+
+                {/* Botones de Acción con Separación Limpia */}
+                <View style={{ flexDirection: 'row', width: '100%' }}>
                   <TouchableOpacity
                     onPress={() => navigation.navigate('LoginModal')}
-                    className="flex-1 bg-brand-primary py-2.5 rounded-xl items-center"
+                    style={{
+                      flex: 1,
+                      backgroundColor: '#0F172A',
+                      paddingVertical: 12,
+                      borderRadius: 14,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginRight: 6,
+                    }}
+                    activeOpacity={0.8}
                   >
-                    <Text className="text-xs font-bold text-white">Iniciar Sesión</Text>
+                    <Text style={{ fontSize: 13, fontWeight: '800', color: '#FFFFFF' }}>Iniciar Sesión</Text>
                   </TouchableOpacity>
+
                   <TouchableOpacity
                     onPress={() => navigation.navigate('RegisterModal')}
-                    className="flex-1 bg-gray-100 border border-gray-300 py-2.5 rounded-xl items-center"
+                    style={{
+                      flex: 1,
+                      backgroundColor: '#FFFFFF',
+                      borderWidth: 1,
+                      borderColor: '#CBD5E1',
+                      paddingVertical: 12,
+                      borderRadius: 14,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginLeft: 6,
+                    }}
+                    activeOpacity={0.8}
                   >
-                    <Text className="text-xs font-bold text-gray-800">Crear Cuenta</Text>
+                    <Text style={{ fontSize: 13, fontWeight: '800', color: '#0F172A' }}>Crear Cuenta</Text>
                   </TouchableOpacity>
                 </View>
               </View>
             )}
 
-            {/* Metrics & Quick Stats */}
-            <View className="flex-row gap-3 mb-4">
-              <View className="flex-1 bg-white p-3.5 rounded-2xl border border-gray-200 shadow-xs items-center">
-                <ShoppingBag size={20} color="#111827" />
-                <Text className="text-lg font-extrabold text-gray-900 mt-1">
-                  {orders.length}
+            {/* Métricas y Estadísticas (SOLO datos de la cuenta activa) */}
+            <View style={{ flexDirection: 'row', marginBottom: 16 }}>
+              {/* Compras */}
+              <View
+                style={{
+                  flex: 1,
+                  backgroundColor: '#FFFFFF',
+                  paddingVertical: 14,
+                  paddingHorizontal: 8,
+                  borderRadius: 18,
+                  borderWidth: 1,
+                  borderColor: '#E2E8F0',
+                  alignItems: 'center',
+                  marginRight: 6,
+                }}
+              >
+                <ShoppingBag size={20} color="#0F172A" />
+                <Text style={{ fontSize: 18, fontWeight: '900', color: '#0F172A', marginTop: 4 }}>
+                  {userPurchasesCount}
                 </Text>
-                <Text className="text-[11px] text-gray-500 font-medium text-center">
-                  Compras
-                </Text>
+                <Text style={{ fontSize: 11, color: '#64748B', fontWeight: '600', marginTop: 2 }}>Compras</Text>
               </View>
 
+              {/* Reservas Pick & Try */}
               <TouchableOpacity
                 onPress={() => navigation.navigate('MainTabs', { screen: 'ReservationsTab' })}
-                className="flex-1 bg-white p-3.5 rounded-2xl border border-gray-200 shadow-xs items-center"
+                style={{
+                  flex: 1,
+                  backgroundColor: '#FFFFFF',
+                  paddingVertical: 14,
+                  paddingHorizontal: 8,
+                  borderRadius: 18,
+                  borderWidth: 1,
+                  borderColor: '#E2E8F0',
+                  alignItems: 'center',
+                  marginHorizontal: 3,
+                }}
+                activeOpacity={0.7}
               >
                 <Calendar size={20} color="#2563EB" />
-                <Text className="text-lg font-extrabold text-blue-600 mt-1">
-                  {reservations.length}
+                <Text style={{ fontSize: 18, fontWeight: '900', color: '#2563EB', marginTop: 4 }}>
+                  {userReservationsCount}
                 </Text>
-                <Text className="text-[11px] text-gray-500 font-medium text-center">
-                  Reservas Pick & Try
+                <Text style={{ fontSize: 11, color: '#64748B', fontWeight: '600', marginTop: 2, textAlign: 'center' }}>
+                  Reservas
                 </Text>
               </TouchableOpacity>
 
-              <View className="flex-1 bg-white p-3.5 rounded-2xl border border-gray-200 shadow-xs items-center">
+              {/* Puntos VIP */}
+              <View
+                style={{
+                  flex: 1,
+                  backgroundColor: '#FFFFFF',
+                  paddingVertical: 14,
+                  paddingHorizontal: 8,
+                  borderRadius: 18,
+                  borderWidth: 1,
+                  borderColor: '#E2E8F0',
+                  alignItems: 'center',
+                  marginLeft: 6,
+                }}
+              >
                 <Sparkles size={20} color="#D97706" />
-                <Text className="text-lg font-extrabold text-amber-600 mt-1">
-                  450
+                <Text style={{ fontSize: 18, fontWeight: '900', color: '#D97706', marginTop: 4 }}>
+                  {userVipPoints}
                 </Text>
-                <Text className="text-[11px] text-gray-500 font-medium text-center">
-                  Puntos VIP
-                </Text>
+                <Text style={{ fontSize: 11, color: '#64748B', fontWeight: '600', marginTop: 2 }}>Puntos VIP</Text>
               </View>
             </View>
 
             {/* Preferencias de Sucursal Física */}
-            <View className="bg-white rounded-2xl p-4 border border-gray-200 shadow-xs mb-4">
-              <View className="flex-row items-center justify-between mb-2">
-                <View className="flex-row items-center">
-                  <MapPin size={18} color="#111827" />
-                  <Text className="text-sm font-bold text-gray-900 ml-2">
+            <View
+              style={{
+                backgroundColor: '#FFFFFF',
+                borderRadius: 20,
+                padding: 18,
+                borderWidth: 1,
+                borderColor: '#E2E8F0',
+                marginBottom: 16,
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <MapPin size={18} color="#0F172A" />
+                  <Text style={{ fontSize: 14, fontWeight: '800', color: '#0F172A', marginLeft: 8 }}>
                     Sucursal Favorita
                   </Text>
                 </View>
-                <Badge label="Activa" variant="success" size="sm" />
+                <View style={{ backgroundColor: '#ECFDF5', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 20, borderWidth: 1, borderColor: '#A7F3D0' }}>
+                  <Text style={{ fontSize: 10, fontWeight: '800', color: '#059669' }}>ACTIVA</Text>
+                </View>
               </View>
 
-              <Text className="text-xs text-gray-500 leading-relaxed mb-3">
+              <Text style={{ fontSize: 11, color: '#64748B', lineHeight: 16, marginBottom: 12 }}>
                 Esta sucursal se usa para verificar el stock inmediato de prendas y apartar cabinas de probador físico.
               </Text>
 
-              <View className="bg-gray-50 p-3 rounded-xl border border-gray-200 flex-row items-center justify-between mb-3">
-                <View>
-                  <Text className="text-xs font-bold text-gray-900">
-                    {activeBranch.name} ({activeBranch.code})
-                  </Text>
-                  <Text className="text-[11px] text-gray-500 mt-0.5">
-                    {activeBranch.address} • {activeBranch.city}
-                  </Text>
-                </View>
+              <View style={{ backgroundColor: '#F8FAFC', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: '#F1F5F9' }}>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: '#0F172A' }}>
+                  {activeBranch.name} ({activeBranch.code})
+                </Text>
+                <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
+                  {activeBranch.address} • {activeBranch.city}
+                </Text>
               </View>
 
-              <Button
-                title="Cambiar Sucursal Activa"
-                variant="outline"
-                size="sm"
+              <TouchableOpacity
                 onPress={openSelectionModal}
-              />
+                style={{
+                  marginTop: 12,
+                  paddingVertical: 10,
+                  borderRadius: 12,
+                  backgroundColor: '#EFF6FF',
+                  borderWidth: 1,
+                  borderColor: '#BFDBFE',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexDirection: 'row',
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '800', color: '#1D4ED8', marginRight: 4 }}>Cambiar Sucursal Activa</Text>
+                <ChevronRight size={14} color="#1D4ED8" />
+              </TouchableOpacity>
             </View>
 
-            {/* Informative Highlights */}
-            <View className="bg-white rounded-2xl p-4 border border-gray-200 shadow-xs mb-4">
-              <Text className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">
+            {/* Garantías & Servicios de la Marca */}
+            <View style={{ backgroundColor: '#FFFFFF', borderRadius: 20, padding: 18, borderWidth: 1, borderColor: '#E2E8F0' }}>
+              <Text style={{ fontSize: 11, fontWeight: '800', color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>
                 Garantías & Servicios FashionStore
               </Text>
 
-              <View className="space-y-3">
-                <View className="flex-row items-center justify-between py-1 border-b border-gray-100">
-                  <View className="flex-row items-center">
-                    <ShieldCheck size={16} color="#059669" />
-                    <Text className="text-xs font-semibold text-gray-800 ml-2">
-                      Garantía de cambio en tienda
-                    </Text>
-                  </View>
-                  <Text className="text-[11px] text-gray-400">7 días continuos</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <ShieldCheck size={16} color="#059669" />
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#0F172A', marginLeft: 8 }}>
+                    Garantía de cambio en tienda
+                  </Text>
                 </View>
+                <Text style={{ fontSize: 11, color: '#64748B' }}>7 días continuos</Text>
+              </View>
 
-                <View className="flex-row items-center justify-between py-1 border-b border-gray-100">
-                  <View className="flex-row items-center">
-                    <Calendar size={16} color="#2563EB" />
-                    <Text className="text-xs font-semibold text-gray-800 ml-2">
-                      Apartado Pick & Try
-                    </Text>
-                  </View>
-                  <Text className="text-[11px] text-gray-400">Hasta 5 prendas / 2 hrs</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#F8FAFC' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Calendar size={16} color="#2563EB" />
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#0F172A', marginLeft: 8 }}>
+                    Apartado Pick & Try
+                  </Text>
                 </View>
+                <Text style={{ fontSize: 11, color: '#64748B' }}>Hasta 5 prendas / 2 hrs</Text>
+              </View>
 
-                <View className="flex-row items-center justify-between py-1">
-                  <View className="flex-row items-center">
-                    <CreditCard size={16} color="#4F46E5" />
-                    <Text className="text-xs font-semibold text-gray-800 ml-2">
-                      Pasarela Digital & Pago QR
-                    </Text>
-                  </View>
-                  <Text className="text-[11px] text-gray-400">Verificación inmediata</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#F8FAFC' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Truck size={16} color="#7C3AED" />
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#0F172A', marginLeft: 8 }}>
+                    Pasarela Digital & Pago QR
+                  </Text>
                 </View>
+                <Text style={{ fontSize: 11, color: '#64748B' }}>Verificación inmediata</Text>
               </View>
             </View>
           </>
         ) : (
-          /* ========================================================== */
-          /* CU14: CONSULTAR HISTORIAL DE COMPRAS DIGITALES             */
-          /* ========================================================== */
+          /* Historial de Compras */
           <View>
-            <View className="mb-3">
-              <Text className="text-base font-bold text-gray-900">
-                Historial de Compras Digitales
-              </Text>
-              <Text className="text-xs text-gray-500 mt-0.5">
-                Revisa el estado de entrega, comprobante de pago y prendas adquiridas.
-              </Text>
-            </View>
-
-            {orders.length === 0 ? (
-              <View className="bg-white rounded-2xl p-8 items-center border border-gray-200">
-                <Package size={44} color="#9CA3AF" />
-                <Text className="text-base font-bold text-gray-800 mt-3">
-                  Aún no tienes compras
+            {!isAuthenticated ? (
+              <View style={{ backgroundColor: '#FFFFFF', borderRadius: 20, padding: 24, borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center' }}>
+                <ShoppingBag size={40} color="#94A3B8" />
+                <Text style={{ fontSize: 15, fontWeight: '800', color: '#0F172A', marginTop: 12, textAlign: 'center' }}>
+                  Inicia sesión para ver tus compras
                 </Text>
-                <Text className="text-xs text-gray-500 text-center mt-1 mb-4">
-                  Tus pedidos realizados con tarjeta o pago QR aparecerán detallados en esta sección.
+                <Text style={{ fontSize: 12, color: '#64748B', textAlign: 'center', marginTop: 4, marginBottom: 16 }}>
+                  Tu historial de pedidos digitales y facturas se asocian a tu cuenta.
                 </Text>
-                <Button
-                  title="Explorar Catálogo"
-                  variant="primary"
-                  size="sm"
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('LoginModal')}
+                  style={{ backgroundColor: '#0F172A', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12 }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#FFFFFF' }}>Iniciar Sesión</Text>
+                </TouchableOpacity>
+              </View>
+            ) : orders.length === 0 ? (
+              <View style={{ backgroundColor: '#FFFFFF', borderRadius: 20, padding: 32, borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center' }}>
+                <ShoppingBag size={42} color="#CBD5E1" />
+                <Text style={{ fontSize: 16, fontWeight: '800', color: '#0F172A', marginTop: 12 }}>
+                  Aún no tienes compras realizadas
+                </Text>
+                <Text style={{ fontSize: 12, color: '#64748B', textAlign: 'center', marginTop: 4, marginBottom: 20 }}>
+                  Explora nuestro catálogo y realiza tu primer pedido con entrega a domicilio o retiro en tienda.
+                </Text>
+                <TouchableOpacity
                   onPress={() => navigation.navigate('MainTabs', { screen: 'CatalogTab' })}
-                />
+                  style={{ backgroundColor: '#0F172A', paddingHorizontal: 22, paddingVertical: 12, borderRadius: 14, flexDirection: 'row', alignItems: 'center' }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: '#FFFFFF', marginRight: 6 }}>Ir al Catálogo</Text>
+                  <ArrowRight size={14} color="#FFFFFF" />
+                </TouchableOpacity>
               </View>
             ) : (
-              <View className="space-y-3.5">
-                {orders.map((order) => {
-                  const isExpanded = selectedOrder?.id === order.id;
-                  const formattedDate = new Date(order.createdAt).toLocaleDateString('es-ES', {
-                    day: '2-digit',
-                    month: 'short',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  });
-
-                  return (
-                    <View
-                      key={order.id}
-                      className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-xs"
-                    >
-                      {/* Order Header Summary */}
-                      <TouchableOpacity
-                        onPress={() => setSelectedOrder(isExpanded ? null : order)}
-                        className="p-4 bg-white"
-                      >
-                        <View className="flex-row items-center justify-between mb-2">
-                          <View className="flex-row items-center">
-                            <Text className="text-sm font-bold text-gray-900 mr-2">
-                              #{order.orderNumber}
-                            </Text>
-                            <Badge
-                              label={
-                                order.status === 'PAID'
-                                  ? 'Pagado & Confirmado'
-                                  : 'Verificando Pago QR'
-                              }
-                              variant={order.status === 'PAID' ? 'success' : 'warning'}
-                              size="sm"
-                            />
-                          </View>
-                          <Text className="text-base font-extrabold text-brand-primary">
-                            ${order.total.toFixed(2)} USD
-                          </Text>
-                        </View>
-
-                        <View className="flex-row items-center justify-between text-xs text-gray-500">
-                          <View className="flex-row items-center">
-                            <Clock size={12} color="#6B7280" />
-                            <Text className="text-xs text-gray-500 ml-1">
-                              {formattedDate}
-                            </Text>
-                          </View>
-
-                          <View className="flex-row items-center">
-                            {order.paymentMethod === 'CARD_GATEWAY' ? (
-                              <CreditCard size={12} color="#4F46E5" />
-                            ) : (
-                              <QrCode size={12} color="#059669" />
-                            )}
-                            <Text className="text-xs font-semibold text-gray-700 ml-1">
-                              {order.paymentMethod === 'CARD_GATEWAY' ? 'Tarjeta' : 'QR Estático'}
-                            </Text>
-                          </View>
-                        </View>
-
-                        <View className="flex-row items-center justify-between mt-2 pt-2 border-t border-gray-100">
-                          <Text className="text-[11px] text-gray-500">
-                            {order.deliveryType === 'PICKUP_IN_STORE'
-                              ? `Retiro: ${order.branchName || 'Sucursal Central'}`
-                              : 'Envío express a domicilio'}
-                          </Text>
-                          <Text className="text-xs font-bold text-brand-primary">
-                            {isExpanded ? 'Ocultar prendas ▲' : `Ver ${order.items.length} prendas ▼`}
-                          </Text>
-                        </View>
-                      </TouchableOpacity>
-
-                      {/* Expanded Breakdown */}
-                      {isExpanded && (
-                        <View className="bg-gray-50 p-4 border-t border-gray-200">
-                          <Text className="text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">
-                            Detalle de Artículos:
-                          </Text>
-
-                          <View className="space-y-2 mb-3">
-                            {order.items.map((item, idx) => (
-                              <View
-                                key={idx}
-                                className="flex-row items-center bg-white p-2.5 rounded-xl border border-gray-200"
-                              >
-                                <Image
-                                  source={{ uri: item.imageUrl }}
-                                  className="w-12 h-12 rounded-lg bg-gray-200"
-                                  resizeMode="cover"
-                                />
-                                <View className="flex-1 ml-3">
-                                  <Text
-                                    numberOfLines={1}
-                                    className="text-xs font-bold text-gray-900"
-                                  >
-                                    {item.name}
-                                  </Text>
-                                  <Text className="text-[11px] text-gray-500">
-                                    Talla: {item.sizeName} • Color: {item.colorName} • Cant: {item.quantity}
-                                  </Text>
-                                  <Text className="text-xs font-semibold text-brand-primary mt-0.5">
-                                    ${(item.price * item.quantity).toFixed(2)} USD
-                                  </Text>
-                                </View>
-                              </View>
-                            ))}
-                          </View>
-
-                          {/* Payment & Delivery Summary */}
-                          <View className="bg-white p-3 rounded-xl border border-gray-200 space-y-1">
-                            <View className="flex-row justify-between">
-                              <Text className="text-xs text-gray-500">Subtotal</Text>
-                              <Text className="text-xs font-medium text-gray-800">
-                                ${order.subtotal.toFixed(2)}
-                              </Text>
-                            </View>
-                            <View className="flex-row justify-between">
-                              <Text className="text-xs text-gray-500">Envío</Text>
-                              <Text className="text-xs font-medium text-gray-800">
-                                {order.shippingCost > 0
-                                  ? `$${order.shippingCost.toFixed(2)}`
-                                  : 'Gratis ($0.00)'}
-                              </Text>
-                            </View>
-                            <View className="flex-row justify-between pt-1 border-t border-gray-100">
-                              <Text className="text-xs font-bold text-gray-900">Total Pagado</Text>
-                              <Text className="text-xs font-extrabold text-brand-primary">
-                                ${order.total.toFixed(2)} USD
-                              </Text>
-                            </View>
-                          </View>
-                        </View>
-                      )}
+              orders.map((ord) => (
+                <View
+                  key={ord.id}
+                  style={{
+                    backgroundColor: '#FFFFFF',
+                    borderRadius: 18,
+                    padding: 16,
+                    borderWidth: 1,
+                    borderColor: '#E2E8F0',
+                    marginBottom: 12,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '900', color: '#2563EB' }}>
+                      {ord.orderNumber}
+                    </Text>
+                    <View style={{ backgroundColor: '#ECFDF5', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12 }}>
+                      <Text style={{ fontSize: 10, fontWeight: '800', color: '#059669' }}>
+                        {ord.status === 'PAID' ? 'PAGADO' : 'PENDIENTE'}
+                      </Text>
                     </View>
-                  );
-                })}
-              </View>
+                  </View>
+
+                  <Text style={{ fontSize: 11, color: '#64748B' }}>
+                    Fecha: {new Date(ord.createdAt).toLocaleDateString('es-BO')}
+                  </Text>
+                  <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
+                    {ord.items.length} prenda(s) • Entrega: {ord.deliveryType === 'PICKUP_IN_STORE' ? 'Retiro en Tienda' : 'A Domicilio'}
+                  </Text>
+
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#F1F5F9' }}>
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: '#64748B' }}>Total Liquidado:</Text>
+                    <Text style={{ fontSize: 15, fontWeight: '900', color: '#0F172A' }}>
+                      Bs. {ord.total.toFixed(2)}
+                    </Text>
+                  </View>
+                </View>
+              ))
             )}
           </View>
         )}
       </ScrollView>
 
-      {/* Modal selector de sucursal */}
+      {/* Modal de selección de sucursales */}
       <BranchSelectionModal />
     </ScreenContainer>
   );

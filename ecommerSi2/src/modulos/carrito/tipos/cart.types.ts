@@ -33,9 +33,11 @@ export interface ClientOrder {
   branchName?: string;
   usuario_id?: string; // ordenes.usuario_id
   direccion_id?: string; // ordenes.direccion_id
-  paymentMethod: 'CARD_GATEWAY' | 'STATIC_QR'; // ordenes.metodo_pago
+  paymentMethod: 'CARD_GATEWAY' | 'STATIC_QR' | 'STORE_CASH'; // ordenes.metodo_pago
   paymentReceiptUrl?: string; // ordenes.referencia_pago
-  status: 'PAID' | 'PENDING_MANUAL_VERIFICATION'; // ordenes.estado
+  discountAmount?: number;
+  couponCode?: string;
+  status: 'PAID' | 'PENDING_MANUAL_VERIFICATION' | 'RESERVED_IN_STORE'; // ordenes.estado
   createdAt: string; // ordenes.creado_en
   pago?: PagoEntity; // tabla pagos
 }
