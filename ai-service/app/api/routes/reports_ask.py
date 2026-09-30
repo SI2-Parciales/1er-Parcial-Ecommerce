@@ -32,16 +32,27 @@ async def ask_report(
     ],
     report_agent: Annotated[ReportAgent, Depends(get_report_agent)],
 ) -> ReportAskResponse:
+    authorization = require_authorization(credentials)
+    return await process_report_query(request.query, authorization, report_agent)
+
+
+def require_authorization(
+    credentials: HTTPAuthorizationCredentials | None,
+) -> str:
     if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Se requiere un token Bearer válido.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    return f"{credentials.scheme} {credentials.credentials}"
 
-    authorization = f"{credentials.scheme} {credentials.credentials}"
+
+async def process_report_query(
+    query: str, authorization: str, report_agent: ReportAgent
+) -> ReportAskResponse:
     try:
-        return await report_agent.ask(request.query, authorization)
+        return await report_agent.ask(query, authorization)
     except GeminiRateLimitError as error:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,

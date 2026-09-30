@@ -29,5 +29,11 @@ class ReportAskResponse(BaseModel):
     data: list[ReportExecution]
 
 
+class ReportVoiceResponse(BaseModel):
+    transcription: str
+    answer: str
+    data: list[ReportExecution]
+
+
 def serialize_report_query(query: ReportQuery) -> dict[str, Any]:
     return query.model_dump(mode="json", by_alias=True, exclude_none=True)

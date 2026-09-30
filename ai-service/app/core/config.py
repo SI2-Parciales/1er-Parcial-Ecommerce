@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     gemini_model: str | None = None
     gemini_timeout_seconds: float = Field(default=30.0, gt=0)
     app_timezone: str = "America/La_Paz"
+    whisper_model: str = "small"
+    whisper_device: str = "cpu"
+    whisper_compute_type: str = "int8"
+    whisper_language: str = "es"
+    max_audio_size_mb: int = Field(default=10, gt=0)
+    whisper_max_concurrent: int = Field(default=1, gt=0)
 
     @field_validator("app_timezone")
     @classmethod

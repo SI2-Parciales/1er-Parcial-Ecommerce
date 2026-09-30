@@ -6,10 +6,12 @@ from httpx import AsyncClient
 from app.agents.report_agent import ReportAgent
 from app.api.routes.reports import router as reports_router
 from app.api.routes.reports_ask import router as reports_ask_router
+from app.api.routes.reports_voice import router as reports_voice_router
 from app.clients.gemini_client import GeminiClient
 from app.clients.nestjs_client import NestJSClient
 from app.core.config import get_settings
 from app.services.report_service import ReportService
+from app.services.speech_service import SpeechService
 
 
 @asynccontextmanager
@@ -19,6 +21,7 @@ async def lifespan(application: FastAPI):
         report_service = ReportService(NestJSClient(settings, http_client))
         gemini_client = GeminiClient(settings)
         application.state.report_service = report_service
+        application.state.speech_service = SpeechService(settings)
         application.state.report_agent = ReportAgent(
             gemini_client,
             report_service,
@@ -33,6 +36,7 @@ async def lifespan(application: FastAPI):
 app = FastAPI(lifespan=lifespan)
 app.include_router(reports_router)
 app.include_router(reports_ask_router)
+app.include_router(reports_voice_router)
 
 
 @app.get("/")
