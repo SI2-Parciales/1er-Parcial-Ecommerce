@@ -89,11 +89,35 @@ export class AuthService {
     };
   }
 
+  async refreshToken(token: string): Promise<AuthResponse> {
+    try {
+      const payload = this.jwtService.verify<{ sub: number; role: string }>(token);
+      const user = await this.usersService.findById(payload.sub);
+      if (!user || user.estado !== ACTIVE_STATUS) {
+        throw new UnauthorizedException('Cuenta no disponible.');
+      }
+      return this.buildResponse('Token renovado exitosamente.', user);
+    } catch {
+      throw new UnauthorizedException('Token de sesión expirado o inválido.');
+    }
+  }
+
   private normalizeEmail(email: string): string {
     return email.trim().toLowerCase();
   }
 
-  private buildResponse(message: string, user: UserWithRole): AuthResponse {
+  private buildResponse(
+    message: string,
+    user: {
+      id: number;
+      nombre: string;
+      apellido: string;
+      telefono: string;
+      email: string;
+      estado: string;
+      rol: { nombre: string };
+    },
+  ): AuthResponse {
     const publicUser: PublicUser = {
       id: user.id,
       nombre: user.nombre,

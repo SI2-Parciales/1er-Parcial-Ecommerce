@@ -82,7 +82,7 @@ function PrintContent({ reservation }: { reservation: FittingRoomReservation }) 
         <tbody>
           {reservation.items.map(item => (
             <tr key={item.id} className="border-b border-gray-300">
-              <td className="py-2 font-bold align-top">1x</td>
+              <td className="py-2 font-bold align-top">{item.quantity || 1}x</td>
               <td className="py-2">
                 <p className="font-bold truncate max-w-[180px]">{item.garmentName}</p>
                 <p>Talla: {item.sizeName} | Color: {item.colorName}</p>
@@ -94,9 +94,9 @@ function PrintContent({ reservation }: { reservation: FittingRoomReservation }) 
       </table>
 
       <div className="text-center text-xs border-t-2 border-black border-dashed pt-2 mt-4">
-        <p>TALLA DE PRENDAS: {reservation.items.length}</p>
+        <p>TOTAL DE PRENDAS: {reservation.items.reduce((acc, it) => acc + (it.quantity || 1), 0)} UNIDADES</p>
         <p className="mt-2 text-[10px]">Preparado por: ___________________</p>
-        <p className="mt-4 text-[10px]">- FIN DE RECIBO -</p>
+        <p className="mt-4 text-[10px]">- FIN DE RECIBO DE BODEGA -</p>
       </div>
     </div>
   );

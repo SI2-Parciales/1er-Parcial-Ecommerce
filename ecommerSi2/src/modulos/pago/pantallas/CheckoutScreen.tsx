@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   StatusBar,
   StyleSheet,
+  Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScreenContainer } from '@shared/components/ScreenContainer';
@@ -30,6 +31,8 @@ import { useCartStore } from '@modulos/carrito/almacen/cart.store';
 import { useBranchStore } from '@modulos/sucursales/almacen/branch.store';
 import { useAuthStore } from '@modulos/autenticacion/almacen/auth.store';
 import { cartService } from '@modulos/carrito/servicios/cart.service';
+import { reservasService } from '@modulos/reservas/servicios/reservas.service';
+import { appStorage } from '@shared/storage/mmkv';
 import {
   validateBillingNit,
   validateBillingName,
@@ -50,8 +53,25 @@ export const CheckoutScreen: React.FC<Props> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const { getTotal, deliveryType, items, createOrder } = useCartStore();
   const { activeBranch } = useBranchStore();
-  const { user } = useAuthStore();
+  const { user, isAuthenticated } = useAuthStore();
+  const token = appStorage.getString('access_token');
+  const isUserLoggedIn = Boolean(user && token);
   const baseTotal = getTotal();
+
+  // Redirigir a login si el usuario no ha iniciado sesión
+  useEffect(() => {
+    if (!isUserLoggedIn) {
+      Alert.alert(
+        'Iniciar Sesión Requerido',
+        'Para realizar una compra o reserva en tienda debes iniciar sesión con tu cuenta de cliente.',
+        [
+          { text: 'Registrarme', onPress: () => navigation.navigate('RegisterModal') },
+          { text: 'Iniciar Sesión', onPress: () => navigation.navigate('LoginModal') },
+          { text: 'Volver', onPress: () => navigation.goBack(), style: 'cancel' },
+        ]
+      );
+    }
+  }, [isUserLoggedIn]);
 
   const [paymentMethod, setPaymentMethod] = useState<'STATIC_QR' | 'CARD_GATEWAY' | 'STORE_CASH'>('CARD_GATEWAY');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -186,21 +206,69 @@ export const CheckoutScreen: React.FC<Props> = ({ navigation }) => {
       }
     }
 
+    // Validar autenticación antes de procesar pago o reserva
+    if (!isUserLoggedIn) {
+      Alert.alert(
+        'Iniciar Sesión Requerido',
+        'Debes iniciar sesión con tu cuenta para procesar tu orden o reserva.',
+        [
+          { text: 'Registrarme', onPress: () => navigation.navigate('RegisterModal') },
+          { text: 'Iniciar Sesión', onPress: () => navigation.navigate('LoginModal') },
+          { text: 'Cancelar', style: 'cancel' },
+        ]
+      );
+      return;
+    }
+
     setIsSubmitting(true);
     let digitalSaleId: number | null = null;
 
     try {
-      // 1. Registrar venta digital en el backend NestJS (CU12)
-      const digitalSale = await cartService.createDigitalSale(
-        billingName.trim(),
-        billingNit.trim()
-      );
+      if (paymentMethod === 'STORE_CASH') {
+        // CU-R01: Registrar reserva en tienda física conectada con backend NestJS (/reservas)
+        const numericBranchId = parseInt(activeBranch.id, 10) || 1;
+        const validItems = items.map((it) => {
+          const vId = parseInt(it.variantId.replace(/\D/g, ''), 10);
+          return {
+            varianteProductoId: !isNaN(vId) && vId > 0 ? vId : 1,
+            cantidad: it.quantity,
+          };
+        });
 
-      if (digitalSale && digitalSale.id) {
-        digitalSaleId = digitalSale.id;
+        const resBackend = await reservasService.crearReserva({
+          sucursalId: numericBranchId,
+          fechaHora: new Date(Date.now() + 48 * 3600 * 1000).toISOString(),
+          items: validItems,
+        });
 
-        // 2. Si el método es electrónico, confirmar pago en backend (CU36)
-        if (paymentMethod !== 'STORE_CASH') {
+        if (resBackend && resBackend.id) {
+          digitalSaleId = resBackend.id;
+        }
+      } else {
+        // Sincronizar sucursal y prendas en el carrito del backend antes de confirmar venta digital
+        const numericBranchId = parseInt(activeBranch.id, 10) || 1;
+        try {
+          await cartService.selectBranch(numericBranchId);
+          for (const item of items) {
+            const varId = parseInt(item.variantId.replace(/\D/g, ''), 10);
+            if (!isNaN(varId) && varId > 0) {
+              await cartService.addDetail(varId, item.quantity).catch(() => {});
+            }
+          }
+        } catch (syncErr: any) {
+          console.log('Sincronización carrito backend:', syncErr?.message);
+        }
+
+        // 1. Registrar venta digital en el backend NestJS (CU12)
+        const digitalSale = await cartService.createDigitalSale(
+          billingName.trim(),
+          billingNit.trim()
+        );
+
+        if (digitalSale && digitalSale.id) {
+          digitalSaleId = digitalSale.id;
+
+          // 2. Si el método es electrónico, confirmar pago en backend (CU36)
           await cartService.processElectronicPayment(
             digitalSale.id,
             paymentMethod === 'CARD_GATEWAY' ? 'TARJETA' : 'QR'
@@ -208,7 +276,7 @@ export const CheckoutScreen: React.FC<Props> = ({ navigation }) => {
         }
       }
     } catch (err: any) {
-      console.warn('Backend venta digital fallback local:', err.message);
+      console.log('Aviso procesamiento backend:', err?.message);
     } finally {
       setIsSubmitting(false);
     }
@@ -634,43 +702,34 @@ export const CheckoutScreen: React.FC<Props> = ({ navigation }) => {
               QR INTEROPERABLE OFICIAL (BOLIVIA)
             </Text>
 
-            {/* Código QR Interoperable BCP con visualización nítida */}
-            <View style={styles.qrContainer}>
-              <View style={styles.qrCornerRow}>
-                <View style={styles.qrTargetSquare} />
-                <View style={styles.qrTargetSquare} />
-              </View>
-
-              <View style={styles.qrCenterInfo}>
-                <QrCode size={48} color="#0F172A" />
-                <Text style={styles.qrAmountText}>
-                  Bs. {finalTotal.toFixed(2)}
+            {/* Código QR Interoperable Oficial Mercantil Santa Cruz */}
+            <View style={styles.qrCardBox}>
+              <Image
+                source={require('../../../../assets/images/foto-prueba.png')}
+                style={styles.qrImageDisplay}
+                resizeMode="contain"
+              />
+              <View style={styles.qrAmountBadge}>
+                <Text style={styles.qrAmountBadgeText}>
+                  Monto a Transferir: Bs. {finalTotal.toFixed(2)}
                 </Text>
-                <Text style={styles.qrMerchantText}>
-                  FASHIONSTORE BCP QR OFICIAL
-                </Text>
-              </View>
-
-              <View style={styles.qrCornerRow}>
-                <View style={styles.qrTargetSquare} />
-                <View style={[styles.qrTargetSquare, { backgroundColor: '#2563EB' }]} />
               </View>
             </View>
 
-            {/* Datos de cuenta BCP para transferencia directa */}
+            {/* Datos de cuenta Mercantil Santa Cruz para transferencia directa */}
             <View style={styles.accountDataBox}>
               <View style={styles.accountDataRow}>
-                <Text style={styles.accountDataLabel}>Banco BCP Nro:</Text>
+                <Text style={styles.accountDataLabel}>Banco Mercantil Santa Cruz:</Text>
                 <TouchableOpacity
-                  onPress={() => Alert.alert('Copiado', 'Nro de cuenta 201-50893321-3-45 copiado.')}
+                  onPress={() => Alert.alert('Copiado', 'Nro de cuenta 1034108621 copiado.')}
                   style={styles.copyRow}
                 >
-                  <Text style={styles.accountDataNumber}>201-50893321-3-45</Text>
+                  <Text style={styles.accountDataNumber}>1034108621</Text>
                   <Copy size={12} color="#2563EB" />
                 </TouchableOpacity>
               </View>
               <Text style={styles.accountHolderText}>
-                Titular: FashionStore Retail Bolivia S.R.L.
+                Titular: MIGUEL ANGEL GUTIERREZ SANTALLA
               </Text>
             </View>
 
@@ -1038,48 +1097,39 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '900',
   },
-  qrContainer: {
-    width: 200,
-    height: 200,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 2,
-    borderColor: '#0F172A',
-    borderRadius: 22,
-    padding: 12,
+  qrCardBox: {
+    width: '100%',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
+    shadowOpacity: 0.05,
     shadowRadius: 6,
     elevation: 2,
+    marginBottom: 10,
   },
-  qrCornerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-  },
-  qrTargetSquare: {
-    width: 36,
-    height: 36,
-    backgroundColor: '#0F172A',
+  qrImageDisplay: {
+    width: 240,
+    height: 310,
     borderRadius: 8,
   },
-  qrCenterInfo: {
-    alignItems: 'center',
+  qrAmountBadge: {
+    marginTop: 10,
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
   },
-  qrAmountText: {
-    fontSize: 14,
+  qrAmountBadgeText: {
+    fontSize: 13,
     fontWeight: '900',
-    color: '#2563EB',
-    marginTop: 4,
-  },
-  qrMerchantText: {
-    fontSize: 9,
-    color: '#64748B',
-    fontFamily: 'monospace',
-    fontWeight: '700',
-    marginTop: 2,
+    color: '#1D4ED8',
   },
   accountDataBox: {
     width: '100%',

@@ -8,10 +8,23 @@ import {
   Platform,
   ScrollView,
   ActivityIndicator,
+  StyleSheet,
+  StatusBar,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScreenContainer } from '@shared/components/ScreenContainer';
 import { PredictiveErrorBanner } from '@shared/components/PredictiveErrorBanner';
-import { ShoppingBag, Mail, Lock, ArrowRight, X, Eye, EyeOff, Sparkles, CheckCircle2, AlertCircle } from 'lucide-react-native';
+import {
+  ShoppingBag,
+  Mail,
+  Lock,
+  ArrowRight,
+  X,
+  Eye,
+  EyeOff,
+  Sparkles,
+  CheckCircle2,
+} from 'lucide-react-native';
 import { useAuthStore } from '../almacen/auth.store';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '@app/navigation/types';
@@ -19,6 +32,7 @@ import type { RootStackParamList } from '@app/navigation/types';
 type Props = NativeStackScreenProps<RootStackParamList, 'LoginModal'>;
 
 export const LoginScreen: React.FC<Props> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const { login, isLoading } = useAuthStore();
   const [email, setEmail] = useState('cliente@example.com');
   const [password, setPassword] = useState('Cliente123,');
@@ -66,7 +80,7 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
     } else {
       setErrorFeedback({
         message: res.message || 'Credenciales incorrectas o cuenta no registrada.',
-        suggestion: 'Puedes pulsar en el botón "Llenar Cuenta Cliente" para iniciar sesión con la cuenta de prueba oficial.',
+        suggestion: 'Puedes pulsar en el botón de abajo "Cliente" para autocompletar la cuenta oficial del backend.',
       });
     }
   };
@@ -78,66 +92,75 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   return (
-    <ScreenContainer className="bg-white flex-1" style={{ flex: 1 }}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="flex-1">
+    <ScreenContainer style={styles.screen}>
+      <StatusBar barStyle="dark-content" />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.keyboardContainer}
+      >
         <ScrollView
-          contentContainerStyle={{ flexGrow: 1, padding: 24, justifyContent: 'center' }}
+          contentContainerStyle={[
+            styles.scrollContent,
+            {
+              paddingTop: Math.max(insets.top, 16) + 8,
+              paddingBottom: Math.max(insets.bottom, 24) + 24,
+            },
+          ]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
           {/* Botón Cerrar */}
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            className="absolute top-4 right-4 p-2.5 bg-gray-100 rounded-full z-10"
-            activeOpacity={0.7}
-          >
-            <X size={18} color="#374151" />
-          </TouchableOpacity>
+          <View style={styles.topBar}>
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              style={styles.closeBtn}
+              activeOpacity={0.7}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <X size={18} color="#334155" />
+            </TouchableOpacity>
+          </View>
 
           {/* Logo y Encabezado de Marca */}
-          <View className="items-center mb-6 mt-4">
-            <View className="w-16 h-16 bg-slate-950 rounded-2xl items-center justify-center shadow-lg mb-3 border border-slate-800">
+          <View style={styles.headerBox}>
+            <View style={styles.logoBadge}>
               <ShoppingBag size={28} color="#FFFFFF" />
             </View>
-            <View className="flex-row items-center gap-1.5 bg-blue-50 px-3 py-1 rounded-full mb-1">
-              <Sparkles size={12} color="#2563EB" />
-              <Text className="text-[11px] font-bold text-blue-700 uppercase tracking-widest">
-                FashionStore Retail 2026
-              </Text>
+            <View style={styles.brandTag}>
+              <Sparkles size={13} color="#2563EB" />
+              <Text style={styles.brandTagText}>FashionStore Retail 2026</Text>
             </View>
-            <Text className="text-2xl font-black text-gray-900 tracking-tight text-center">
-              Iniciar Sesión
-            </Text>
-            <Text className="text-xs text-gray-500 mt-1 text-center max-w-xs leading-relaxed">
+            <Text style={styles.titleText}>Iniciar Sesión</Text>
+            <Text style={styles.subtitleText}>
               Accede para comprar prendas exclusivas, probarte en Realidad Aumentada y reservar probadores en tienda.
             </Text>
           </View>
 
-          {/* Mensaje de Error Predictivo */}
+          {/* Mensajes de Estado */}
           {errorFeedback && (
-            <PredictiveErrorBanner
-              message={errorFeedback.message}
-              suggestion={errorFeedback.suggestion}
-              type="error"
-            />
-          )}
-
-          {/* Mensaje de Éxito */}
-          {successMessage && (
-            <View className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex-row items-center gap-2">
-              <CheckCircle2 size={16} color="#059669" />
-              <Text className="text-xs text-emerald-800 flex-1 font-semibold">{successMessage}</Text>
+            <View style={styles.bannerSpacing}>
+              <PredictiveErrorBanner
+                message={errorFeedback.message}
+                suggestion={errorFeedback.suggestion}
+                type="error"
+              />
             </View>
           )}
 
-          {/* Formulario */}
-          <View className="space-y-3.5">
-            <View>
-              <Text className="text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1.5">
-                Correo Electrónico
-              </Text>
-              <View className="flex-row items-center bg-gray-50/80 border border-gray-200 rounded-xl px-3.5 py-3 focus:border-blue-600">
-                <Mail size={18} color="#6B7280" />
+          {successMessage && (
+            <View style={styles.successBanner}>
+              <CheckCircle2 size={18} color="#059669" />
+              <Text style={styles.successBannerText}>{successMessage}</Text>
+            </View>
+          )}
+
+          {/* Campos del Formulario */}
+          <View style={styles.formContainer}>
+            {/* Input Correo */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>CORREO ELECTRÓNICO</Text>
+              <View style={styles.inputWrapper}>
+                <Mail size={18} color="#64748B" />
                 <TextInput
                   value={email}
                   onChangeText={(val) => {
@@ -147,19 +170,18 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
                   placeholder="ejemplo@correo.com"
                   autoCapitalize="none"
                   keyboardType="email-address"
-                  className="flex-1 ml-2.5 text-sm text-gray-900"
-                  placeholderTextColor="#9CA3AF"
+                  style={styles.textInputField}
+                  placeholderTextColor="#94A3B8"
                   editable={!isLoading}
                 />
               </View>
             </View>
 
-            <View className="mt-3">
-              <Text className="text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1.5">
-                Contraseña
-              </Text>
-              <View className="flex-row items-center bg-gray-50/80 border border-gray-200 rounded-xl px-3.5 py-3">
-                <Lock size={18} color="#6B7280" />
+            {/* Input Contraseña */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>CONTRASEÑA</Text>
+              <View style={styles.inputWrapper}>
+                <Lock size={18} color="#64748B" />
                 <TextInput
                   value={password}
                   onChangeText={(val) => {
@@ -168,88 +190,93 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
                   }}
                   placeholder="••••••••"
                   secureTextEntry={!showPassword}
-                  className="flex-1 ml-2.5 text-sm text-gray-900"
-                  placeholderTextColor="#9CA3AF"
+                  style={styles.textInputField}
+                  placeholderTextColor="#94A3B8"
                   editable={!isLoading}
                 />
-                <TouchableOpacity onPress={() => setShowPassword(!showPassword)} className="p-1">
+                <TouchableOpacity
+                  onPress={() => setShowPassword(!showPassword)}
+                  style={styles.eyeBtn}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
                   {showPassword ? (
-                    <EyeOff size={18} color="#9CA3AF" />
+                    <EyeOff size={18} color="#64748B" />
                   ) : (
-                    <Eye size={18} color="#9CA3AF" />
+                    <Eye size={18} color="#64748B" />
                   )}
                 </TouchableOpacity>
               </View>
             </View>
 
-            {/* Botón Principal de Iniciar Sesión */}
+            {/* BOTÓN PRINCIPAL DE INICIAR SESIÓN (ALTO CONTRASTE Y SIEMPRE VISIBLE) */}
             <TouchableOpacity
               onPress={handleLogin}
               disabled={isLoading}
-              activeOpacity={0.85}
-              className={`w-full py-4 rounded-xl items-center justify-center flex-row gap-2 mt-5 shadow-sm ${
-                isLoading ? 'bg-blue-400' : 'bg-blue-600'
-              }`}
+              activeOpacity={0.88}
+              style={[
+                styles.primaryBtn,
+                isLoading && styles.primaryBtnDisabled,
+              ]}
             >
               {isLoading ? (
                 <>
                   <ActivityIndicator size="small" color="#FFFFFF" />
-                  <Text className="text-white font-bold text-sm">Conectando al servidor...</Text>
+                  <Text style={styles.primaryBtnText}>Conectando con el servidor...</Text>
                 </>
               ) : (
                 <>
-                  <Text className="text-white font-bold text-sm tracking-wide">
-                    Iniciar Sesión
-                  </Text>
-                  <ArrowRight size={16} color="#FFFFFF" />
+                  <Text style={styles.primaryBtnText}>Iniciar Sesión</Text>
+                  <ArrowRight size={18} color="#FFFFFF" />
                 </>
               )}
             </TouchableOpacity>
 
-            {/* Accesos Rápidos para Evaluación y Pruebas */}
-            <View className="mt-6 pt-5 border-t border-gray-100">
-              <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center mb-2.5">
-                Acceso Rápido / Cuentas Registradas en Backend
-              </Text>
-              <View className="flex-row flex-wrap gap-2 justify-center">
+            {/* Accesos Rápidos Oficiales para Pruebas */}
+            <View style={styles.quickAccessSection}>
+              <View style={styles.dividerRow}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>CUENTAS REGISTRADAS EN BACKEND</Text>
+                <View style={styles.dividerLine} />
+              </View>
+
+              <View style={styles.demoChipsRow}>
                 <TouchableOpacity
                   onPress={() => handleFillDemo('cliente@example.com', 'Cliente123,')}
-                  className="px-3 py-1.5 bg-blue-50 border border-blue-200/80 rounded-lg flex-row items-center gap-1.5"
+                  style={[styles.demoChip, styles.demoChipBlue]}
                   activeOpacity={0.7}
                 >
-                  <Text className="text-[11px] font-bold text-blue-800">👤 Cliente</Text>
-                  <Text className="text-[10px] text-blue-600 font-mono">cliente@example.com</Text>
+                  <Text style={styles.demoChipTitle}>👤 Cliente</Text>
+                  <Text style={styles.demoChipSubtitle}>cliente@example.com</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   onPress={() => handleFillDemo('juan@example.com', 'JuanSeguro123!')}
-                  className="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg flex-row items-center gap-1.5"
+                  style={[styles.demoChip, styles.demoChipSlate]}
                   activeOpacity={0.7}
                 >
-                  <Text className="text-[11px] font-bold text-gray-800">🛍️ Juan</Text>
-                  <Text className="text-[10px] text-gray-600 font-mono">juan@example.com</Text>
+                  <Text style={styles.demoChipTitle}>🛍️ Juan</Text>
+                  <Text style={styles.demoChipSubtitle}>juan@example.com</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   onPress={() => handleFillDemo('admin@example.com', 'Admin123,')}
-                  className="px-3 py-1.5 bg-purple-50 border border-purple-200/80 rounded-lg flex-row items-center gap-1.5"
+                  style={[styles.demoChip, styles.demoChipPurple]}
                   activeOpacity={0.7}
                 >
-                  <Text className="text-[11px] font-bold text-purple-900">👑 Admin</Text>
-                  <Text className="text-[10px] text-purple-700 font-mono">admin@example.com</Text>
+                  <Text style={styles.demoChipTitle}>👑 Admin</Text>
+                  <Text style={styles.demoChipSubtitle}>admin@example.com</Text>
                 </TouchableOpacity>
               </View>
             </View>
 
-            {/* Enlace Registro */}
-            <View className="flex-row justify-center items-center gap-1.5 mt-5">
-              <Text className="text-xs text-gray-500">¿No tienes cuenta todavía?</Text>
+            {/* Enlace para Ir a Registro */}
+            <View style={styles.footerLinkRow}>
+              <Text style={styles.footerText}>¿No tienes cuenta todavía?</Text>
               <TouchableOpacity
-                onPress={() => {
-                  navigation.replace('RegisterModal');
-                }}
+                onPress={() => navigation.replace('RegisterModal')}
+                activeOpacity={0.7}
               >
-                <Text className="text-xs font-bold text-blue-600">Regístrate gratis</Text>
+                <Text style={styles.footerLink}>Regístrate gratis</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -258,3 +285,233 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
     </ScreenContainer>
   );
 };
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  keyboardContainer: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: 24,
+  },
+  topBar: {
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    marginBottom: 8,
+  },
+  closeBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerBox: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  logoBadge: {
+    width: 62,
+    height: 62,
+    backgroundColor: '#0F172A',
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  brandTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 20,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#DBEAFE',
+  },
+  brandTagText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#2563EB',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  titleText: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: '#0F172A',
+    textAlign: 'center',
+    letterSpacing: -0.5,
+  },
+  subtitleText: {
+    fontSize: 12,
+    color: '#64748B',
+    textAlign: 'center',
+    marginTop: 6,
+    lineHeight: 18,
+    maxWidth: 290,
+  },
+  bannerSpacing: {
+    marginBottom: 16,
+  },
+  successBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 16,
+  },
+  successBannerText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#065F46',
+    flex: 1,
+  },
+  formContainer: {
+    width: '100%',
+  },
+  inputGroup: {
+    marginBottom: 14,
+  },
+  inputLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#334155',
+    letterSpacing: 0.6,
+    marginBottom: 6,
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    height: 52,
+  },
+  textInputField: {
+    flex: 1,
+    marginLeft: 10,
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#0F172A',
+    height: '100%',
+  },
+  eyeBtn: {
+    padding: 6,
+  },
+  primaryBtn: {
+    backgroundColor: '#2563EB',
+    height: 54,
+    borderRadius: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 8,
+    shadowColor: '#2563EB',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  primaryBtnDisabled: {
+    backgroundColor: '#93C5FD',
+  },
+  primaryBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  quickAccessSection: {
+    marginTop: 22,
+    paddingTop: 8,
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#E2E8F0',
+  },
+  dividerText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#94A3B8',
+    letterSpacing: 0.8,
+    paddingHorizontal: 10,
+  },
+  demoChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    justifyContent: 'center',
+  },
+  demoChip: {
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  demoChipBlue: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#BFDBFE',
+  },
+  demoChipSlate: {
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+  },
+  demoChipPurple: {
+    backgroundColor: '#FAF5FF',
+    borderColor: '#E9D5FF',
+  },
+  demoChipTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#1E293B',
+  },
+  demoChipSubtitle: {
+    fontSize: 9,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    color: '#64748B',
+    marginTop: 1,
+  },
+  footerLinkRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 22,
+  },
+  footerText: {
+    fontSize: 13,
+    color: '#64748B',
+  },
+  footerLink: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#2563EB',
+  },
+});

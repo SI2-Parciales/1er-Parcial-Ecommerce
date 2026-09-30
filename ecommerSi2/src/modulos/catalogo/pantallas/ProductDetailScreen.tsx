@@ -29,6 +29,8 @@ import {
 import { useBranchStore } from '@modulos/sucursales/almacen/branch.store';
 import { useFittingBagStore } from '@modulos/reservas/almacen/fittingBag.store';
 import { useCartStore } from '@modulos/carrito/almacen/cart.store';
+import { useAuthStore } from '@modulos/autenticacion/almacen/auth.store';
+import { appStorage } from '@shared/storage/mmkv';
 import { BranchSelectionModal } from '@modulos/sucursales/componentes/BranchSelectionModal';
 import { MOCK_PRODUCTS } from '../datos/mockProducts';
 import type { ProductItem, ProductVariant } from '../tipos/catalog.types';
@@ -40,10 +42,22 @@ type Props = NativeStackScreenProps<RootStackParamList, 'ProductDetail'>;
 const getClothingImages = (name: string, cat: string): string[] => {
   const n = name.toLowerCase();
   const c = cat.toLowerCase();
-  if (n.includes('polera') || n.includes('shirt') || n.includes('camiseta')) {
+  if (n.includes('camisa')) {
     return [
-      'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=800&auto=format&fit=crop&q=80',
-      'https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?w=800&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?w=800&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=800&auto=format&fit=crop&q=80',
+    ];
+  }
+  if (n.includes('pantalón') || n.includes('pantalon')) {
+    return [
+      'https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?w=800&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1473966968600-fa801b869a1a?w=800&auto=format&fit=crop&q=80',
+    ];
+  }
+  if (n.includes('corbata')) {
+    return [
+      'https://images.unsplash.com/photo-1589756823695-278bc923f962?w=800&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1598033129183-c4f50c736f10?w=800&auto=format&fit=crop&q=80',
     ];
   }
   if (n.includes('short') || n.includes('bermuda')) {
@@ -52,9 +66,10 @@ const getClothingImages = (name: string, cat: string): string[] => {
       'https://images.unsplash.com/photo-1562157873-818bc0726f68?w=800&auto=format&fit=crop&q=80',
     ];
   }
-  if (n.includes('vestido') || c.includes('vestido') || c.includes('gala')) {
+  if (n.includes('polera') || n.includes('shirt') || n.includes('camiseta')) {
     return [
-      'https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=800&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=800&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1581655353564-df123a1eb820?w=800&auto=format&fit=crop&q=80',
     ];
   }
   return [
@@ -71,17 +86,36 @@ export const ProductDetailScreen: React.FC<Props> = ({ navigation, route }) => {
 
   const cartCount = cartItems.reduce((acc, it) => acc + it.quantity, 0);
 
+  // Inicializar buscando solo en AR mock si aplica
   const [product, setProduct] = useState<ProductItem>(() => {
-    return MOCK_PRODUCTS.find((p) => p.id === productId) || MOCK_PRODUCTS[0];
+    const arItem = MOCK_PRODUCTS.find((p) => p.id === productId && p.hasArTryOn === true);
+    if (arItem) return arItem;
+    return {
+      id: productId,
+      name: 'Cargando prenda...',
+      description: 'Consultando detalles del inventario...',
+      category: 'SHIRTS',
+      categoryLabel: 'Catálogo',
+      season: 'SPRING_SUMMER',
+      seasonLabel: 'Colección 2026',
+      basePrice: 0,
+      rating: 5.0,
+      images: ['https://images.unsplash.com/photo-1523381294911-8d3cead13475?w=800&auto=format&fit=crop&q=80'],
+      hasArTryOn: false,
+      variants: [],
+      branchStocks: {},
+    };
   });
 
   useEffect(() => {
-    const local = MOCK_PRODUCTS.find((p) => p.id === productId);
-    if (local) {
-      setProduct(local);
+    // Si es una prenda AR autorizada
+    const arLocal = MOCK_PRODUCTS.find((p) => p.id === productId && p.hasArTryOn === true);
+    if (arLocal) {
+      setProduct(arLocal);
       return;
     }
 
+    // Consultar al backend NestJS /productos/:id
     (async () => {
       try {
         const rawId = String(productId).replace('back-', '');
@@ -111,16 +145,18 @@ export const ProductDetailScreen: React.FC<Props> = ({ navigation, route }) => {
             };
           });
 
-          const catName = p.categoria?.nombre || 'General';
+          const catName = p.categoria?.nombre || 'Ropa Casual';
           const defaultImages = getClothingImages(p.nombre, catName);
 
           setProduct({
             id: `back-${p.id}`,
             name: p.nombre,
-            description: p.descripcion || '',
+            description: p.descripcion || `Prenda de alta calidad de ${catName}, disponible en sucursales físicas y venta online.`,
             category:
               catName.toUpperCase().includes('DEPORTIV') || p.nombre.toLowerCase().includes('short')
                 ? 'PANTS'
+                : catName.toUpperCase().includes('GALA')
+                ? 'DRESSES'
                 : 'SHIRTS',
             categoryLabel: catName,
             season: 'SPRING_SUMMER',
@@ -133,8 +169,8 @@ export const ProductDetailScreen: React.FC<Props> = ({ navigation, route }) => {
             branchStocks,
           });
         }
-      } catch {
-        // Fallback
+      } catch (err: any) {
+        console.log('Error al cargar prenda de backend:', err?.message);
       }
     })();
   }, [productId]);
@@ -243,6 +279,21 @@ export const ProductDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   };
 
   const handleBuyNow = () => {
+    const user = useAuthStore.getState().user;
+    const token = appStorage.getString('access_token');
+    if (!user || !token) {
+      Alert.alert(
+        'Iniciar Sesión Requerido',
+        'Para realizar una compra o reserva debes iniciar sesión con tu cuenta de cliente.',
+        [
+          { text: 'Registrarme', onPress: () => navigation.navigate('RegisterModal') },
+          { text: 'Iniciar Sesión', onPress: () => navigation.navigate('LoginModal') },
+          { text: 'Cancelar', style: 'cancel' },
+        ]
+      );
+      return;
+    }
+
     addToCart({
       productId: product.id,
       variantId: selectedVariant.id,

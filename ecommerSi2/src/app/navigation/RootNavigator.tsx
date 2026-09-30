@@ -21,15 +21,21 @@ const ReservationPassScreen: React.FC<RootStackScreenProps<'ReservationPassModal
   route,
 }) => {
   const { reservationId } = route.params;
-  const { reservations } = useFittingBagStore();
+  const { reservations, cargarReservasBackend } = useFittingBagStore();
   const reservation =
-    reservations.find((r) => r.id === reservationId || r.reservationCode === reservationId) || null;
+    reservations.find(
+      (r) =>
+        r.id === reservationId ||
+        r.reservationCode === reservationId ||
+        String(r.backendId) === reservationId,
+    ) || null;
 
   return (
     <ReservationPassModal
       visible={true}
       reservation={reservation}
       onClose={() => navigation.goBack()}
+      onReservationUpdated={() => cargarReservasBackend()}
     />
   );
 };

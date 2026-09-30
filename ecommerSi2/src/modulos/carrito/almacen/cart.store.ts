@@ -23,51 +23,12 @@ interface CartState {
   ) => ClientOrder;
 }
 
-const INITIAL_ORDERS: ClientOrder[] = [
-  {
-    id: 'ord-init-1',
-    orderNumber: 'ORD-549120',
-    items: [
-      {
-        id: 'cart-init-1',
-        productId: 'prod-2',
-        variantId: 'var-2-1',
-        name: 'Blazer Entallado Mujer',
-        sizeName: 'M',
-        colorName: 'Azul Marino',
-        colorHex: '#1E3A8A',
-        price: 119.5,
-        quantity: 1,
-        imageUrl: 'https://images.unsplash.com/photo-1548624149-f9b1859aa9d0?w=800&auto=format&fit=crop&q=80',
-      },
-      {
-        id: 'cart-init-2',
-        productId: 'prod-3',
-        variantId: 'var-3-2',
-        name: 'Blusa Satinada Elegante',
-        sizeName: 'M',
-        colorName: 'Blanco Seda',
-        colorHex: '#FFFFFF',
-        price: 48.0,
-        quantity: 1,
-        imageUrl: 'https://images.unsplash.com/photo-1564257631407-4deb1f99d992?w=800&auto=format&fit=crop&q=80',
-      },
-    ],
-    subtotal: 164.5,
-    shippingCost: 0,
-    total: 164.5,
-    deliveryType: 'PICKUP_IN_STORE',
-    branchName: 'Sucursal Central',
-    paymentMethod: 'CARD_GATEWAY',
-    status: 'PAID',
-    createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
-  },
-];
+const INITIAL_ORDERS: ClientOrder[] = [];
 
 export const useCartStore = create<CartState>((set, get) => {
   const savedItems = appStorage.getObject<CartItem[]>('cart_items') || [];
   const savedOrders = appStorage.getObject<ClientOrder[]>('client_orders');
-  const initialOrders = savedOrders && savedOrders.length > 0 ? savedOrders : INITIAL_ORDERS;
+  const initialOrders = savedOrders || [];
 
   return {
     items: savedItems,

@@ -33,11 +33,20 @@ export const ENDPOINTS = {
   INVENTORY: {
     PUBLIC_VARIANT: (varianteId: number | string): string => `/inventario/publico/variantes/${varianteId}`,
   },
+  RESERVAS: {
+    BASE: '/reservas',
+    BY_ID: (id: number | string): string => `/reservas/${id}`,
+    UPDATE_DETAIL: (id: number | string, detailId: number | string): string => `/reservas/${id}/detalles/${detailId}`,
+    REMOVE_DETAIL: (id: number | string, detailId: number | string): string => `/reservas/${id}/detalles/${detailId}`,
+    CANCEL: (id: number | string): string => `/reservas/${id}`,
+    START_PREPARATION: (id: number | string): string => `/reservas/${id}/iniciar-preparacion`,
+    FINALIZE: (id: number | string): string => `/reservas/${id}/finalizar`,
+  },
   RESERVATIONS: {
-    BASE: '/reservaciones',
-    AVAILABLE_SLOTS: '/reservaciones/disponibles',
-    MY_RESERVATIONS: '/reservaciones/me',
-    CANCEL: (id: string): string => `/reservaciones/${id}/cancelar`,
+    BASE: '/reservas',
+    AVAILABLE_SLOTS: '/reservas',
+    MY_RESERVATIONS: '/reservas',
+    CANCEL: (id: string | number): string => `/reservas/${id}`,
   },
   ORDERS: {
     CHECKOUT_GATEWAY: '/ventas/digitales',

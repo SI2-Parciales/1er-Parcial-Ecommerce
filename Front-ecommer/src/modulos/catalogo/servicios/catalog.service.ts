@@ -10,13 +10,31 @@ import type {
 import type { ProductFormValues } from '../esquemas/product.schema';
 import { mockDb } from '@core/mock/mock-db';
 
+const getGarmentImage = (nombre: string, _cat?: string) => {
+  const n = (nombre || '').toLowerCase();
+  if (n.includes('camisa')) {
+    return 'https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?w=800&auto=format&fit=crop&q=80';
+  }
+  if (n.includes('pantalón') || n.includes('pantalon')) {
+    return 'https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?w=800&auto=format&fit=crop&q=80';
+  }
+  if (n.includes('corbata')) {
+    return 'https://images.unsplash.com/photo-1589756823695-278bc923f962?w=800&auto=format&fit=crop&q=80';
+  }
+  if (n.includes('short')) {
+    return 'https://images.unsplash.com/photo-1591195853828-11db59a44f6b?w=800&auto=format&fit=crop&q=80';
+  }
+  if (n.includes('polera')) {
+    return 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=800&auto=format&fit=crop&q=80';
+  }
+  return 'https://images.unsplash.com/photo-1523381294911-8d3cead13475?w=800&auto=format&fit=crop&q=80';
+};
+
 const mapBackendProduct = (p: any): GarmentProduct => {
+  const catName = p.categoria?.nombre || 'Ropa Casual';
   const images = p.imagenUrl
     ? [p.imagenUrl]
-    : [
-        'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=500&auto=format&fit=crop&q=60',
-        'https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?w=500&auto=format&fit=crop&q=60',
-      ];
+    : [getGarmentImage(p.nombre, catName)];
 
   const variants = (p.variantes || []).map((v: any) => {
     const stockTotal = (v.inventarios || []).reduce(
@@ -49,10 +67,10 @@ const mapBackendProduct = (p: any): GarmentProduct => {
   return {
     id: String(p.id),
     name: p.nombre,
-    description: p.descripcion || 'Prenda de alta calidad confeccionada con estándares internacionales.',
-    category: (p.categoria?.nombre || 'Ropa Casual').toUpperCase().includes('DEPORTIV')
+    description: p.descripcion || `Prenda de alta calidad de ${catName}, disponible en sucursales físicas y venta online.`,
+    category: catName.toUpperCase().includes('DEPORTIV')
       ? 'PANTS'
-      : (p.categoria?.nombre || '').toUpperCase().includes('GALA')
+      : catName.toUpperCase().includes('GALA')
       ? 'DRESSES'
       : 'SHIRTS',
     collection: 'Colección 2026',
@@ -86,14 +104,14 @@ export const catalogService = {
       const response = await apiClient.get<any>('/productos', {
         params: {
           pagina: params.page || 1,
-          limite: params.pageSize || 20,
+          limite: params.pageSize || 50,
           buscar: params.search || undefined,
         }
       });
       if (response.data && Array.isArray(response.data.data)) {
         const mapped = response.data.data.map(mapBackendProduct);
         const totalItems = response.data.meta?.total ?? mapped.length;
-        const itemsPerPage = response.data.meta?.limit ?? 20;
+        const itemsPerPage = response.data.meta?.limit ?? 50;
         const currentPage = response.data.meta?.page ?? 1;
         return {
           data: mapped,
@@ -107,9 +125,18 @@ export const catalogService = {
         };
       }
     } catch (err) {
-      console.warn('Backend /productos no disponible, usando mockDb:', err);
+      console.warn('Backend /productos no disponible:', err);
     }
-    return mockDb.getProducts(params);
+    return {
+      data: [],
+      meta: {
+        totalItems: 0,
+        itemCount: 0,
+        itemsPerPage: params.pageSize || 20,
+        totalPages: 0,
+        currentPage: params.page || 1,
+      },
+    };
   },
 
   async getProductById(id: string): Promise<GarmentProduct> {
@@ -117,14 +144,15 @@ export const catalogService = {
       const numericId = parseInt(id, 10);
       if (!isNaN(numericId)) {
         const response = await apiClient.get<any>(`/productos/${numericId}`);
-        if (response.data && response.data.id) {
-          return mapBackendProduct(response.data);
+        const data = response.data?.data || response.data;
+        if (data && data.id) {
+          return mapBackendProduct(data);
         }
       }
     } catch (err) {
-      console.warn(`Backend /productos/${id} no disponible, usando mockDb:`, err);
+      console.warn(`Backend /productos/${id} no disponible:`, err);
     }
-    return mockDb.getProductById(id);
+    throw new Error(`Prenda no encontrada en la base de datos.`);
   },
 
   async createProduct(payload: ProductFormValues): Promise<GarmentProduct> {

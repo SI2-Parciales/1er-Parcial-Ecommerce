@@ -1,26 +1,11 @@
 /**
  * ============================================================================
- * TIPOS OFICIALES DE RESERVAS - PANEL WEB (reservation.types.ts)
+ * TIPOS OFICIALES DE RESERVAS (Módulo de Reservas y Probador Inteligente)
  * ============================================================================
- * Sincronizado con el backend NestJS y Prisma para el Encargado de Sucursal.
- * Casos de uso soportados:
- * - CU-E01: Consultar reservas de la sucursal
- * - CU-E02: Consultar detalle de reserva
- * - CU-E03: Iniciar preparación (PENDIENTE -> EN_PROCESO)
- * - CU-E04: Finalizar atención (EN_PROCESO -> FINALIZADA)
+ * Alineados 100% con los modelos de Prisma y DTOs del Backend NestJS.
  */
 
 export type EstadoReserva = 'PENDIENTE' | 'EN_PROCESO' | 'FINALIZADA' | 'CANCELADA';
-
-export type ReservationStatus = 
-  | EstadoReserva
-  | 'PENDING' 
-  | 'PREPARING' 
-  | 'READY' 
-  | 'CLIENT_PRESENT' 
-  | 'COMPLETED' 
-  | 'CANCELLED' 
-  | 'EXPIRED';
 
 export interface PrendaVarianteReserva {
   id: number;
@@ -28,7 +13,6 @@ export interface PrendaVarianteReserva {
   producto: {
     id: number;
     nombre: string;
-    precio?: number;
     imagenUrl: string | null;
   };
   talla: {
@@ -43,7 +27,7 @@ export interface PrendaVarianteReserva {
 }
 
 export interface PrendaReservaDetalle {
-  id: number;
+  id: number; // detalleId
   cantidad: number;
   varianteProducto: PrendaVarianteReserva;
 }
@@ -59,7 +43,6 @@ export interface ClienteReserva {
   nombre: string;
   apellido: string;
   telefono: string;
-  email?: string;
 }
 
 export interface ReservaEntidad {
@@ -73,50 +56,70 @@ export interface ReservaEntidad {
   detalles?: PrendaReservaDetalle[];
 }
 
-export interface ReservationItem {
-  id: string;
-  detalleId?: number;
-  variantId: string;
-  sku: string;
-  barcode: string;
-  garmentName: string;
-  sizeName: string;
-  colorName: string;
-  price: number;
-  imageUrl: string;
-  quantity?: number;
-  isPurchased?: boolean;
+export interface CrearReservaItemDto {
+  varianteProductoId: number;
+  cantidad: number;
 }
 
-export interface FittingRoomReservation {
-  id: string;
-  backendId?: number;
-  reservationCode: string;
-  clientId: string;
-  clientName: string;
-  clientPhone: string;
-  clientEmail?: string;
-  branchId: string;
-  branchName: string;
-  scheduledTime: string;
-  status: ReservationStatus;
-  items: ReservationItem[];
-  rawDetalles?: PrendaReservaDetalle[];
-  notes?: string;
-  assignedStaffName?: string;
-  createdAt: string;
-  updatedAt: string;
+export interface CrearReservaDto {
+  sucursalId: number;
+  fechaHora: string; // Formato ISO 8601
+  items: CrearReservaItemDto[];
 }
 
-export interface UpdateReservationStatusPayload {
-  status: ReservationStatus;
-  notes?: string;
+export interface ActualizarReservaDetalleDto {
+  cantidad: number;
 }
 
-export interface ListReservasParams {
+export interface ListarReservasQuery {
   page?: number;
   limit?: number;
   estado?: EstadoReserva;
   sucursalId?: number;
   clienteId?: number;
+}
+
+export interface RespuestaListaReservas {
+  data: ReservaEntidad[];
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+  };
+}
+
+/**
+ * Representa una prenda dentro de la Bolsa de Probador Virtual (Fitting Bag)
+ */
+export interface FittingBagItem {
+  id: string;
+  detalleId?: number; // Identificador numérico del detalle en la BD para CU-R04
+  productId: string;
+  productName: string;
+  variantId: string;
+  sku: string;
+  sizeName: string;
+  colorName: string;
+  colorHex: string;
+  price: number;
+  imageUrl: string;
+  quantity?: number;
+}
+
+/**
+ * Estructura de reserva unificada para la interfaz del cliente móvil
+ */
+export interface ClientReservation {
+  id: string;
+  reservationCode: string; // Ej: "RES-1234"
+  backendId?: number;
+  branchId: string;
+  branchName: string;
+  branchAddress: string;
+  scheduledTime: string;
+  status: EstadoReserva;
+  items: FittingBagItem[];
+  rawDetalles?: PrendaReservaDetalle[];
+  createdAt: string;
+  qrPayload: string;
 }

@@ -411,23 +411,30 @@ export class ReservasService {
     next: EstadoReserva,
   ) {
     this.assertIdentifier(id);
-    if (user.role !== ACTOR_ROLE.ENCARGADO_SUCURSAL) {
+    if (
+      user.role !== ACTOR_ROLE.ENCARGADO_SUCURSAL &&
+      user.role !== ACTOR_ROLE.ADMINISTRADOR
+    ) {
       throw new ForbiddenException(
-        'Solo los encargados de sucursal pueden cambiar el estado de una reserva.',
+        'Solo los encargados de sucursal o administradores pueden cambiar el estado de una reserva.',
       );
     }
     return this.prisma.$transaction(async (transaction) => {
       const actor = await this.lockManagerActor(transaction, user.id);
-      const reservation = await this.lockReservationForBranch(
-        transaction,
-        id,
-        actor.sucursalId!,
-      );
+      const reservation =
+        actor.role === ACTOR_ROLE.ADMINISTRADOR
+          ? await this.lockReservationAnyBranch(transaction, id)
+          : await this.lockReservationForBranch(
+              transaction,
+              id,
+              actor.sucursalId!,
+            );
       if (reservation.estado !== expected) {
         throw new ConflictException(
           `La reserva debe estar ${expected} para pasar a ${next}.`,
         );
       }
+      const branchId = reservation.sucursalId;
       if (next === EstadoReserva.FINALIZADA) {
         const details = await transaction.detalleReserva.findMany({
           where: { reservaId: id },
@@ -436,7 +443,7 @@ export class ReservasService {
         });
         await this.inventarioService.releaseCustomerReservation(
           transaction,
-          actor.sucursalId!,
+          branchId,
           details,
         );
       }
@@ -467,17 +474,35 @@ export class ReservasService {
     if (!actor || actor.estado !== ACTIVE_STATUS) {
       throw new UnauthorizedException('La cuenta no está disponible.');
     }
-    if (actor.role !== ACTOR_ROLE.ENCARGADO_SUCURSAL) {
+    if (
+      actor.role !== ACTOR_ROLE.ENCARGADO_SUCURSAL &&
+      actor.role !== ACTOR_ROLE.ADMINISTRADOR
+    ) {
       throw new ForbiddenException(
-        'Solo los encargados de sucursal pueden cambiar el estado de una reserva.',
+        'Solo los encargados de sucursal o administradores pueden cambiar el estado de una reserva.',
       );
     }
-    if (actor.sucursalId === null) {
+    if (actor.role === ACTOR_ROLE.ENCARGADO_SUCURSAL && actor.sucursalId === null) {
       throw new ForbiddenException(
         'El encargado no tiene una sucursal asignada.',
       );
     }
     return actor;
+  }
+
+  private async lockReservationAnyBranch(
+    transaction: Prisma.TransactionClient,
+    id: number,
+  ): Promise<LockedReservationRow> {
+    const rows = await transaction.$queryRaw<LockedReservationRow[]>`
+      SELECT "id", "estado", "sucursal_id" AS "sucursalId"
+      FROM "reservas"
+      WHERE "id" = ${id}
+      FOR UPDATE
+    `;
+    const reservation = rows[0];
+    if (!reservation) throw this.reservationNotFound();
+    return reservation;
   }
 
   private async lockReservationForBranch(

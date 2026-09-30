@@ -57,15 +57,25 @@ apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
-    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
+    const originalRequest = error.config as (InternalAxiosRequestConfig & { _retry?: boolean }) | undefined;
 
-    if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
-      // Avoid intercepting refresh or profile endpoints to prevent loops
+    if (error.response?.status === 401) {
+      // Si la llamada fue a login, dejamos que la pantalla de login maneje el error
+      if (originalRequest?.url?.includes('/auth/login')) {
+        return Promise.reject(error);
+      }
+
+      // Si falló el refresco o el me, o ya reintentó y sigue 401, sesión caducada
       if (
-        originalRequest.url === '/auth/refresh' ||
-        originalRequest.url?.includes('/auth/me') ||
-        originalRequest.url?.includes('/users/me')
+        originalRequest?.url?.includes('/auth/refresh') ||
+        originalRequest?.url?.includes('/auth/me') ||
+        originalRequest?.url?.includes('/users/me') ||
+        originalRequest?._retry
       ) {
+        useAuthStore.getState().clearAuth();
+        if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+          window.location.replace('/login');
+        }
         return Promise.reject(error);
       }
 
@@ -74,20 +84,26 @@ apiClient.interceptors.response.use(
           failedQueue.push({ resolve, reject });
         })
           .then((token) => {
-            if (originalRequest.headers) {
+            if (originalRequest && originalRequest.headers) {
               originalRequest.headers.Authorization = `Bearer ${token}`;
+              return apiClient(originalRequest);
             }
-            return apiClient(originalRequest);
+            return Promise.reject(new Error('Configuración de petición no disponible'));
           })
           .catch((err) => Promise.reject(err));
       }
 
-      originalRequest._retry = true;
+      if (originalRequest) {
+        originalRequest._retry = true;
+      }
       isRefreshing = true;
 
       const refreshToken = localStorage.getItem('refreshToken');
       if (!refreshToken) {
         useAuthStore.getState().clearAuth();
+        if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+          window.location.replace('/login');
+        }
         return Promise.reject(error);
       }
 
@@ -95,14 +111,18 @@ apiClient.interceptors.response.use(
         const { accessToken } = await authService.refreshToken(refreshToken);
         useAuthStore.getState().setAccessToken(accessToken);
         processQueue(null, accessToken);
-        
-        if (originalRequest.headers) {
+
+        if (originalRequest?.headers) {
           originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+          return apiClient(originalRequest);
         }
-        return apiClient(originalRequest);
+        return Promise.reject(new Error('Petición no disponible tras refresco'));
       } catch (refreshError) {
         processQueue(refreshError, null);
         useAuthStore.getState().clearAuth();
+        if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+          window.location.replace('/login');
+        }
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;

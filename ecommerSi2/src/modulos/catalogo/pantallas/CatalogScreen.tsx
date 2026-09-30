@@ -36,21 +36,31 @@ type Props = CompositeScreenProps<
 
 const CATEGORIES = [
   { key: 'ALL', label: 'Todo el Catálogo', icon: '✨' },
-  { key: 'SHIRTS', label: 'Poleras & Camisas', icon: '👕' },
-  { key: 'PANTS', label: 'Pantalones & Shorts', icon: '👖' },
-  { key: 'DRESSES', label: 'Vestidos & Gala', icon: '👗' },
-  { key: 'JACKETS', label: 'Chaquetas & Abrigos', icon: '🧥' },
-  { key: 'FOOTWEAR', label: 'Calzado & Zapatos', icon: '👟' },
-  { key: 'ACCESSORIES', label: 'Accesorios & Corbatas', icon: '👔' },
+  { key: 'ROPA_CASUAL', label: 'Ropa Casual', icon: '👕' },
+  { key: 'ROPA_GALA', label: 'Ropa de Gala', icon: '👔' },
+  { key: 'ROPA_DEPORTIVA', label: 'Ropa Deportiva', icon: '🏃' },
+  { key: 'AR_MODELS', label: 'Probador RA', icon: '🪞' },
 ];
 
 const getClothingImages = (name: string, cat: string): string[] => {
   const n = name.toLowerCase();
   const c = cat.toLowerCase();
-  if (n.includes('polera') || n.includes('shirt') || n.includes('camiseta')) {
+  if (n.includes('camisa')) {
     return [
-      'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=800&auto=format&fit=crop&q=80',
-      'https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?w=800&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?w=800&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=800&auto=format&fit=crop&q=80',
+    ];
+  }
+  if (n.includes('pantalón') || n.includes('pantalon')) {
+    return [
+      'https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?w=800&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1473966968600-fa801b869a1a?w=800&auto=format&fit=crop&q=80',
+    ];
+  }
+  if (n.includes('corbata')) {
+    return [
+      'https://images.unsplash.com/photo-1589756823695-278bc923f962?w=800&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1598033129183-c4f50c736f10?w=800&auto=format&fit=crop&q=80',
     ];
   }
   if (n.includes('short') || n.includes('bermuda')) {
@@ -59,14 +69,10 @@ const getClothingImages = (name: string, cat: string): string[] => {
       'https://images.unsplash.com/photo-1562157873-818bc0726f68?w=800&auto=format&fit=crop&q=80',
     ];
   }
-  if (n.includes('vestido') || c.includes('vestido') || c.includes('gala')) {
+  if (n.includes('polera') || n.includes('shirt') || n.includes('camiseta')) {
     return [
-      'https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=800&auto=format&fit=crop&q=80',
-    ];
-  }
-  if (n.includes('blazer') || n.includes('chaqueta') || c.includes('chaqueta')) {
-    return [
-      'https://images.unsplash.com/photo-1548624149-f9b1859aa9d0?w=800&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=800&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1581655353564-df123a1eb820?w=800&auto=format&fit=crop&q=80',
     ];
   }
   return [
@@ -83,10 +89,13 @@ export const CatalogScreen: React.FC<Props> = ({ navigation }) => {
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [onlyInStock, setOnlyInStock] = useState(false);
   const [sortBy, setSortBy] = useState<'POPULAR' | 'PRICE_ASC' | 'PRICE_DESC'>('POPULAR');
-  const [products, setProducts] = useState<ProductItem[]>(MOCK_PRODUCTS);
+  // Inicializar únicamente con las prendas de RA autorizadas (sin mockups que no existan en DB)
+  const [products, setProducts] = useState<ProductItem[]>(() => {
+    return MOCK_PRODUCTS.filter((p) => p.hasArTryOn === true);
+  });
   const [addedToast, setAddedToast] = useState<string | null>(null);
 
-  // Carga productos reales del backend + las 3 prendas mockeadas para prueba AR (dos poleras y un short)
+  // Carga productos reales del backend conectada a la base de datos + únicamente prendas con RA
   useEffect(() => {
     let isMounted = true;
     (async () => {
@@ -118,18 +127,22 @@ export const CatalogScreen: React.FC<Props> = ({ navigation }) => {
               };
             });
 
-            const catName = p.categoria?.nombre || 'General';
+            const catName = p.categoria?.nombre || 'Ropa Casual';
+            const catUpper = catName.toUpperCase();
+            let mappedCatKey = 'ROPA_CASUAL';
+            if (catUpper.includes('GALA')) {
+              mappedCatKey = 'ROPA_GALA';
+            } else if (catUpper.includes('DEPORTIV') || p.nombre.toLowerCase().includes('short')) {
+              mappedCatKey = 'ROPA_DEPORTIVA';
+            }
+
             const defaultImages = getClothingImages(p.nombre, catName);
 
             return {
               id: `back-${p.id}`,
               name: p.nombre,
-              description: p.descripcion || '',
-              category: catName.toUpperCase().includes('DEPORTIV') || p.nombre.toLowerCase().includes('short')
-                ? 'PANTS'
-                : catName.toUpperCase().includes('GALA')
-                ? 'DRESSES'
-                : 'SHIRTS',
+              description: p.descripcion || `Prenda de alta calidad de ${catName}, disponible en tienda y online.`,
+              category: mappedCatKey,
               categoryLabel: catName,
               season: 'SPRING_SUMMER',
               seasonLabel: 'Colección 2026',
@@ -142,12 +155,12 @@ export const CatalogScreen: React.FC<Props> = ({ navigation }) => {
             };
           });
 
-          // Solo las 3 prendas que existían antes para AR (dos poleras y un short) tienen AR habilitado
+          // Solo las prendas que tienen modelo de Realidad Aumentada habilitado
           const arMockItems = MOCK_PRODUCTS.filter((p) => p.hasArTryOn === true);
           setProducts([...remoteItems, ...arMockItems]);
         }
-      } catch {
-        // Fallback en caso de que el backend esté temporalmente inaccesible
+      } catch (err: any) {
+        console.log('Catálogo backend conectado:', err?.message);
       }
     })();
     return () => {
@@ -171,7 +184,13 @@ export const CatalogScreen: React.FC<Props> = ({ navigation }) => {
       const matchesSearch =
         p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         p.description.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesCategory = selectedCategory === 'ALL' || p.category === selectedCategory;
+      const matchesCategory =
+        selectedCategory === 'ALL' ||
+        (selectedCategory === 'AR_MODELS' && p.hasArTryOn) ||
+        p.category === selectedCategory ||
+        (selectedCategory === 'ROPA_CASUAL' && (p.categoryLabel || '').toLowerCase().includes('casual')) ||
+        (selectedCategory === 'ROPA_GALA' && (p.categoryLabel || '').toLowerCase().includes('gala')) ||
+        (selectedCategory === 'ROPA_DEPORTIVA' && (p.categoryLabel || '').toLowerCase().includes('deportiv'));
       const branchStock = getProductBranchStock(p, activeBranch.id);
       const matchesStock = !onlyInStock || branchStock > 0;
 

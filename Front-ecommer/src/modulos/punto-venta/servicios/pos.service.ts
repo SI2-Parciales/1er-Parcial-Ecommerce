@@ -26,20 +26,46 @@ export const posService = {
     }
 
     try {
-      const item = await mockDb.lookupBarcode(barcode, branchId);
-      return item;
-    } catch (err: any) {
-      // Fallback a base de datos local si falla la llamada
-      const fallbackLocal = await offlinePosDb.lookupLocalBarcode(barcode, branchId);
-      if (fallbackLocal) {
-        return fallbackLocal;
+      const response = await apiClient.get<any>('/productos', { params: { limite: 100 } });
+      const rawProducts = response.data?.data || response.data;
+      if (Array.isArray(rawProducts)) {
+        for (const p of rawProducts) {
+          for (const v of p.variantes || []) {
+            const code = `777000${v.id}`;
+            if (code === barcode || v.sku === barcode || String(v.id) === barcode) {
+              const numBranchId = parseInt(branchId.replace(/\D/g, ''), 10) || 1;
+              const inv = (v.inventarios || []).find((i: any) => i.sucursalId === numBranchId);
+              const stock = inv ? Math.max(0, (inv.cantidadFisica || 0) - (inv.cantidadNoDisponible || 0)) : 10;
+              return {
+                variantId: String(v.id),
+                sku: v.sku || `SKU-${v.id}`,
+                barcode: code,
+                garmentName: p.nombre,
+                sizeName: v.talla?.nombre || 'M',
+                colorName: v.color?.nombre || 'Predeterminado',
+                unitPrice: Number(p.precio) || 0,
+                quantity: 1,
+                subtotal: Number(p.precio) || 0,
+                maxAvailableStock: stock,
+                isFromReservation: false,
+              };
+            }
+          }
+        }
       }
-      throw err;
+    } catch (err: any) {
+      console.warn('Error al buscar código de barras en backend:', err?.message);
     }
+
+    const fallbackLocal = await offlinePosDb.lookupLocalBarcode(barcode, branchId);
+    if (fallbackLocal) {
+      return fallbackLocal;
+    }
+    throw new Error(`Prenda no encontrada para el código: ${barcode}`);
   },
 
   /**
-   * Obtiene el catálogo rápido para la grilla táctil. Actualiza la caché local de IndexedDB en segundo plano.
+   * Obtiene el catálogo rápido para la grilla táctil conectado al backend.
    */
   async getQuickCatalog(branchId: string, search?: string): Promise<PosCatalogProduct[]> {
     const isOfflineMode = (typeof navigator !== 'undefined' && !navigator.onLine) || 
@@ -53,16 +79,47 @@ export const posService = {
     }
 
     try {
-      const catalog = await mockDb.getQuickCatalog(branchId, search);
-      // Guardar en la base de datos local IndexedDB para disponibilidad offline
-      if (catalog && catalog.length > 0) {
-        offlinePosDb.cacheCatalog(catalog).catch(() => {});
+      const response = await apiClient.get<any>('/productos', { params: { limite: 100, buscar: search } });
+      const rawProducts = response.data?.data || response.data;
+      if (Array.isArray(rawProducts) && rawProducts.length > 0) {
+        const numBranchId = parseInt(branchId.replace(/\D/g, ''), 10) || 1;
+        const catalog: PosCatalogProduct[] = rawProducts.map((p: any) => {
+          const variants = (p.variantes || []).map((v: any) => {
+            const inv = (v.inventarios || []).find((i: any) => i.sucursalId === numBranchId);
+            const stock = inv ? Math.max(0, (inv.cantidadFisica || 0) - (inv.cantidadNoDisponible || 0)) : 10;
+            return {
+              variantId: String(v.id),
+              sku: v.sku || `SKU-${v.id}`,
+              barcode: `777000${v.id}`,
+              sizeName: v.talla?.nombre || 'M',
+              colorName: v.color?.nombre || 'Predeterminado',
+              price: Number(p.precio) || 0,
+              availableStock: stock,
+            };
+          });
+
+          const totalStock = variants.reduce((acc: number, v: any) => acc + v.availableStock, 0);
+
+          return {
+            id: String(p.id),
+            name: p.nombre,
+            category: p.categoria?.nombre || 'Ropa Casual',
+            basePrice: Number(p.precio) || 0,
+            imageUrl: p.imagenUrl || undefined,
+            totalStockInBranch: totalStock,
+            variants,
+          };
+        });
+
+        if (catalog && catalog.length > 0) {
+          offlinePosDb.cacheCatalog(catalog).catch(() => {});
+        }
+        return catalog;
       }
-      return catalog;
-    } catch {
-      // En caso de caída inesperada de red, servir desde IndexedDB
-      return offlinePosDb.getLocalCatalog(branchId, search);
+    } catch (err: any) {
+      console.warn('Backend /productos en POS no disponible, usando IndexedDB:', err?.message);
     }
+    return offlinePosDb.getLocalCatalog(branchId, search);
   },
 
   /**

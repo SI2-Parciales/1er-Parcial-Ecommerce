@@ -10,6 +10,7 @@ import { Link } from 'react-router-dom';
 import { useAuthStore } from '@modulos/autenticacion/almacen/auth.store';
 import { mockDb } from '@core/mock/mock-db';
 import { inventoryService } from '@modulos/inventario/servicios/inventory.service';
+import { reservationService } from '@modulos/reservas/servicios/reservation.service';
 
 export const BranchDashboardPage: React.FC = () => {
   const { activeBranchId, user } = useAuthStore();
@@ -23,7 +24,7 @@ export const BranchDashboardPage: React.FC = () => {
 
   const { data: reservations = { data: [] } } = useQuery({
     queryKey: ['branch-reservations', branchId],
-    queryFn: () => mockDb.getReservations(branchId),
+    queryFn: () => reservationService.getReservations(branchId),
   });
 
   const { data: branchStock = { data: [] } } = useQuery({

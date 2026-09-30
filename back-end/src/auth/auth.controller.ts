@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, UnauthorizedException } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import {
   ApiBadRequestResponse,
@@ -54,5 +54,18 @@ export class AuthController {
   @ApiTooManyRequestsResponse({ description: 'Se excedió el límite de cinco intentos por minuto.' })
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
+  }
+
+  @Post('refresh')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Renovar token de sesión' })
+  @ApiOkResponse({ description: 'Token renovado exitosamente.', type: AuthResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Token expirado o inválido.' })
+  refresh(@Body() body: { refreshToken?: string }) {
+    if (!body?.refreshToken) {
+      throw new UnauthorizedException('Debe proporcionar un token para renovar.');
+    }
+    return this.authService.refreshToken(body.refreshToken);
   }
 }

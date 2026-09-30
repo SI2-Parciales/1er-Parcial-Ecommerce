@@ -20,9 +20,9 @@ const roleMapBackendToFrontend: Record<string, UserRole> = {
 };
 
 const roleMapFrontendToBackendId: Record<UserRole, number> = {
-  ADMIN: 4,
-  BRANCH_MANAGER: 3,
-  CASHIER: 2,
+  ADMIN: 1, // ADMINISTRADOR = 1 en base de datos PostgreSQL
+  CASHIER: 2, // CAJERO = 2
+  BRANCH_MANAGER: 4, // ENCARGADO_SUCURSAL = 4
   SUPPLIER: 1,
 };
 
@@ -54,9 +54,9 @@ export const userService = {
         return rawList.map(mapBackendUserToUserSession);
       }
     } catch (err: any) {
-      console.warn('Backend /users no disponible, usando fallback:', err.message);
+      console.warn('Backend /users no disponible:', err.message);
     }
-    return mockDb.getUsers();
+    return [];
   },
 
   async getRoles(): Promise<BackendRoleItem[]> {

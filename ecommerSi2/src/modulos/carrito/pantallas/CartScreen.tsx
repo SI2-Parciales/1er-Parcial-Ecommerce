@@ -26,6 +26,8 @@ import {
 } from 'lucide-react-native';
 import { useCartStore } from '../almacen/cart.store';
 import { useBranchStore } from '@modulos/sucursales/almacen/branch.store';
+import { useAuthStore } from '@modulos/autenticacion/almacen/auth.store';
+import { appStorage } from '@shared/storage/mmkv';
 import { BranchSelectionModal } from '@modulos/sucursales/componentes/BranchSelectionModal';
 import type { CompositeScreenProps } from '@react-navigation/native';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
@@ -55,6 +57,24 @@ export const CartScreen: React.FC<Props> = ({ navigation }) => {
   const subtotal = getSubtotal();
   const shipping = deliveryType === 'PICKUP_IN_STORE' ? 0 : getShippingCost();
   const finalTotal = getTotal();
+
+  const handleProceedToCheckout = () => {
+    const user = useAuthStore.getState().user;
+    const token = appStorage.getString('access_token');
+    if (!user || !token) {
+      Alert.alert(
+        'Iniciar Sesión Requerido',
+        'Para realizar una compra o reserva en tienda debes iniciar sesión con tu cuenta de cliente.',
+        [
+          { text: 'Registrarme', onPress: () => navigation.navigate('RegisterModal') },
+          { text: 'Iniciar Sesión', onPress: () => navigation.navigate('LoginModal') },
+          { text: 'Cancelar', style: 'cancel' },
+        ]
+      );
+      return;
+    }
+    navigation.navigate('Checkout');
+  };
 
   return (
     <ScreenContainer className="bg-gray-50/50 flex-1" style={{ flex: 1 }}>
@@ -385,7 +405,7 @@ export const CartScreen: React.FC<Props> = ({ navigation }) => {
       {items.length > 0 && (
         <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 16) }]}>
           <TouchableOpacity
-            onPress={() => navigation.navigate('Checkout')}
+            onPress={handleProceedToCheckout}
             activeOpacity={0.88}
             style={styles.checkoutBtn}
           >

@@ -39,7 +39,7 @@ const INITIAL_MESSAGES: ChatMessage[] = [
     sender: 'assistant',
     text: '¡Hola! Soy tu Asistente de Estilo FashionStore con IA. Puedo recomendarte prendas según tu ocasión, verificar disponibilidad en tu sucursal o ayudarte con tallas y probadores virtuales. ¿En qué te puedo asesorar hoy?',
     timestamp: 'Ahora',
-    recommendedProducts: [MOCK_PRODUCTS[0], MOCK_PRODUCTS[1]],
+    recommendedProducts: MOCK_PRODUCTS.filter((p) => p.hasArTryOn === true).slice(0, 2),
     interaccion: {
       id: 'ia-init-1',
       usuario_id: null,
