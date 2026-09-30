@@ -126,6 +126,37 @@ describe('InventarioService', () => {
     expect(prisma.$queryRaw).not.toHaveBeenCalled();
   });
 
+  it('agrega disponibilidad y reservas para reportes con filtros parametrizados', async () => {
+    prisma.$queryRaw.mockResolvedValue([
+      {
+        productId: 2,
+        product: 'Chaqueta',
+        availableStock: 13n,
+        reservedStock: 3n,
+      },
+    ]);
+
+    const result = await service.aggregateForReport(
+      ['product'],
+      { branchId: 6, categoryId: 4 },
+      'desc',
+      20,
+      'availableStock',
+    );
+    const query = prisma.$queryRaw.mock.calls[0]![0] as {
+      sql: string;
+      values: unknown[];
+    };
+
+    expect(query.sql).toContain(
+      'SUM(i."cantidad_fisica" - i."cantidad_reservada" - i."cantidad_no_disponible")',
+    );
+    expect(query.sql).toContain('SUM(i."cantidad_reservada")');
+    expect(query.values).toContain(6);
+    expect(query.values).toContain(4);
+    expect(result[0]).toMatchObject({ availableStock: 13, reservedStock: 3 });
+  });
+
   it('devuelve totales y todas las sucursales, incluyendo cantidades cero', async () => {
     prisma.varianteProducto.findUnique.mockResolvedValue({
       id: 8,

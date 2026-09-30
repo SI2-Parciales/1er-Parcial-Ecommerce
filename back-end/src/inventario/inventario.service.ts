@@ -95,6 +95,14 @@ export interface CantidadInventarioSolicitada {
   cantidad: number;
 }
 
+export type GrupoInventarioReporte = 'branch' | 'product' | 'category';
+
+export interface FiltrosInventarioReporte {
+  branchId?: number;
+  productId?: number;
+  categoryId?: number;
+}
+
 const MAX_POSTGRES_INTEGER = 2_147_483_647;
 
 const availabilitySelect = {
@@ -403,6 +411,80 @@ export class InventarioService {
         total: this.toSafeNumber(totals[0]?.total ?? 0),
       },
     };
+  }
+
+  async aggregateForReport(
+    groupBy: GrupoInventarioReporte[],
+    filters: FiltrosInventarioReporte,
+    order: 'asc' | 'desc',
+    limit: number,
+    orderBy: 'availableStock' | 'reservedStock',
+  ): Promise<Array<Record<string, number | string>>> {
+    const dimensions = {
+      branch: {
+        fields: Prisma.sql`s."id" AS "branchId", s."nombre" AS "branch"`,
+        group: Prisma.sql`s."id", s."nombre"`,
+      },
+      product: {
+        fields: Prisma.sql`p."id" AS "productId", p."nombre" AS "product"`,
+        group: Prisma.sql`p."id", p."nombre"`,
+      },
+      category: {
+        fields: Prisma.sql`c."id" AS "categoryId", c."nombre" AS "category"`,
+        group: Prisma.sql`c."id", c."nombre"`,
+      },
+    } satisfies Record<GrupoInventarioReporte, { fields: Prisma.Sql; group: Prisma.Sql }>;
+    const selectedDimensions = groupBy.map((dimension) => dimensions[dimension]);
+    const fields = selectedDimensions.map(({ fields: selection }) => selection);
+    const groupExpressions = selectedDimensions.map(({ group }) => group);
+    const conditions: Prisma.Sql[] = [Prisma.sql`TRUE`];
+    if (filters.branchId !== undefined) {
+      conditions.push(Prisma.sql`i."sucursal_id" = ${filters.branchId}`);
+    }
+    if (filters.productId !== undefined) {
+      conditions.push(Prisma.sql`p."id" = ${filters.productId}`);
+    }
+    if (filters.categoryId !== undefined) {
+      conditions.push(Prisma.sql`p."categoria_id" = ${filters.categoryId}`);
+    }
+    const available = this.availableStockExpression();
+    const groupClause = groupExpressions.length
+      ? Prisma.sql`GROUP BY ${Prisma.join(groupExpressions, ', ')}`
+      : Prisma.empty;
+    const havingClause = groupExpressions.length
+      ? Prisma.empty
+      : Prisma.sql`HAVING COUNT(i."id") > 0`;
+    const direction = Prisma.raw(order === 'asc' ? 'ASC' : 'DESC');
+    const orderClause = groupExpressions.length
+      ? Prisma.sql`ORDER BY ${Prisma.raw(`"${orderBy}"`)} ${direction}, ${Prisma.join(groupExpressions, ', ')}`
+      : Prisma.empty;
+    const rows = await this.prisma.$queryRaw<
+      Array<Record<string, bigint | number | string>>
+    >(Prisma.sql`
+      SELECT
+        ${fields.length ? Prisma.join(fields, ',') : Prisma.empty}
+        ${fields.length ? Prisma.sql`,` : Prisma.empty}
+        ${available}::bigint AS "availableStock",
+        COALESCE(SUM(i."cantidad_reservada"), 0)::bigint AS "reservedStock"
+      FROM "inventarios" AS i
+      INNER JOIN "sucursales" AS s ON s."id" = i."sucursal_id"
+      INNER JOIN "variantes_producto" AS v ON v."id" = i."variante_producto_id"
+      INNER JOIN "productos" AS p ON p."id" = v."producto_id"
+      INNER JOIN "categorias" AS c ON c."id" = p."categoria_id"
+      WHERE ${Prisma.join(conditions, ' AND ')}
+      ${groupClause}
+      ${havingClause}
+      ${orderClause}
+      LIMIT ${limit}
+    `);
+    return rows.map((row) =>
+      Object.fromEntries(
+        Object.entries(row).map(([key, value]) => [
+          key,
+          typeof value === 'bigint' ? this.toSafeNumber(value) : value,
+        ]),
+      ),
+    );
   }
 
   async findVariant(varianteId: number, query: QueryDetalleInventarioDto) {
@@ -816,9 +898,7 @@ export class InventarioService {
       query.sucursalId === undefined
         ? Prisma.empty
         : Prisma.sql`AND i."sucursal_id" = ${query.sucursalId}`;
-    const availableExpression = Prisma.sql`
-      COALESCE(SUM(i."cantidad_fisica" - i."cantidad_reservada" - i."cantidad_no_disponible"), 0)
-    `;
+    const availableExpression = this.availableStockExpression();
     const inventoryIdExpression =
       query.sucursalId === undefined
         ? Prisma.sql`NULL::integer`
@@ -968,6 +1048,15 @@ export class InventarioService {
       cantidadDisponible,
       agotado: row?.agotado ?? true,
     };
+  }
+
+  private availableStockExpression(): Prisma.Sql {
+    return Prisma.sql`
+      COALESCE(
+        SUM(i."cantidad_fisica" - i."cantidad_reservada" - i."cantidad_no_disponible"),
+        0
+      )
+    `;
   }
 
   private mapAvailabilityRecord(record: AvailabilityRecord) {
