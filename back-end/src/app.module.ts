@@ -1,5 +1,8 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, Reflector } from '@nestjs/core';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
+const CjsReflector = require('@nestjs/core').Reflector;
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule } from './auth/auth.module.js';
@@ -52,6 +55,7 @@ import { ReservasModule } from './reservas/reservas.module.js';
   controllers: [AppController],
   providers: [
     AppService,
+    { provide: CjsReflector, useValue: new CjsReflector() },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: MinimumRoleGuard },

@@ -13,14 +13,43 @@ export interface ApiErrorResponse {
   details?: unknown;
 }
 
+import { Platform } from 'react-native';
+import Constants from 'expo-constants';
+
 export interface AuthTokens {
   access_token: string;
   refresh_token?: string;
   token_type?: string;
 }
 
-const BASE_URL: string =
-  process.env.EXPO_PUBLIC_API_URL || 'http://localhost:1234';
+const getBaseUrl = (): string => {
+  const envUrl = process.env.EXPO_PUBLIC_API_URL;
+  if (envUrl && !envUrl.includes('localhost') && !envUrl.includes('127.0.0.1')) {
+    return envUrl;
+  }
+
+  if (Platform.OS === 'web') {
+    return envUrl || 'http://localhost:1234';
+  }
+
+  // En dispositivo físico corriendo Expo Go, usar la IP de la máquina host
+  const hostUri = Constants.expoConfig?.hostUri;
+  if (hostUri) {
+    const ip = hostUri.split(':')[0];
+    if (ip && ip !== 'localhost' && ip !== '127.0.0.1') {
+      return `http://${ip}:1234`;
+    }
+  }
+
+  // En emulador Android, localhost de la máquina host es 10.0.2.2
+  if (Platform.OS === 'android') {
+    return 'http://10.0.2.2:1234';
+  }
+
+  return envUrl || 'http://localhost:1234';
+};
+
+export const BASE_URL: string = getBaseUrl();
 
 export const apiClient: AxiosInstance = axios.create({
   baseURL: BASE_URL,

@@ -1,10 +1,27 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, FlatList, Image } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  FlatList,
+  Image,
+  StatusBar,
+} from 'react-native';
 import { ScreenContainer } from '@shared/components/ScreenContainer';
-import { Search, SlidersHorizontal, Sparkles, Eye, CheckCircle2, AlertCircle } from 'lucide-react-native';
+import {
+  Search,
+  Sparkles,
+  ShoppingCart,
+  CheckCircle2,
+  AlertCircle,
+  Camera,
+  X,
+  Plus,
+} from 'lucide-react-native';
 import { BranchHeaderSelector } from '@modulos/sucursales/componentes/BranchHeaderSelector';
-import { BranchSelectionModal } from '@modulos/sucursales/componentes/BranchSelectionModal';
 import { useBranchStore } from '@modulos/sucursales/almacen/branch.store';
+import { useCartStore } from '@modulos/carrito/almacen/cart.store';
 import { MOCK_PRODUCTS } from '../datos/mockProducts';
 import type { ProductItem } from '../tipos/catalog.types';
 import type { CompositeScreenProps } from '@react-navigation/native';
@@ -17,44 +34,59 @@ type Props = CompositeScreenProps<
   NativeStackScreenProps<RootStackParamList>
 >;
 
-/**
- * Categorías de filtro superior para segmentar el catálogo
- */
 const CATEGORIES = [
-  { key: 'ALL', label: 'Todo' },
-  { key: 'DRESSES', label: 'Vestidos' },
-  { key: 'JACKETS', label: 'Chaquetas' },
-  { key: 'SHIRTS', label: 'Camisas' },
-  { key: 'PANTS', label: 'Pantalones' },
-  { key: 'FOOTWEAR', label: 'Calzado' },
-  { key: 'ACCESSORIES', label: 'Accesorios' },
+  { key: 'ALL', label: 'Todo el Catálogo', icon: '✨' },
+  { key: 'SHIRTS', label: 'Poleras & Camisas', icon: '👕' },
+  { key: 'PANTS', label: 'Pantalones & Shorts', icon: '👖' },
+  { key: 'DRESSES', label: 'Vestidos & Gala', icon: '👗' },
+  { key: 'JACKETS', label: 'Chaquetas & Abrigos', icon: '🧥' },
+  { key: 'FOOTWEAR', label: 'Calzado & Zapatos', icon: '👟' },
+  { key: 'ACCESSORIES', label: 'Accesorios & Corbatas', icon: '👔' },
 ];
 
-/**
- * ============================================================================
- * PANTALLA PRINCIPAL DE CATÁLOGO (CatalogScreen)
- * ============================================================================
- * Muestra el catálogo de prendas disponibles en la tienda.
- * 
- * Características:
- * 1. Selector de Tienda en la barra superior (sucursal activa con GPS).
- * 2. Carga en tiempo real desde el backend NestJS (GET /productos).
- * 3. Búsqueda instantánea por nombre o descripción de prenda.
- * 4. Filtro por categorías (vestidos, camisas, pantalones, etc.).
- * 5. Filtro de disponibilidad local (solo prendas con stock en la tienda elegida).
- * ============================================================================
- */
-export const CatalogScreen: React.FC<Props> = ({ navigation }) => {
-  // Sucursal seleccionada por el usuario desde useBranchStore
-  const { activeBranch } = useBranchStore();
+const getClothingImages = (name: string, cat: string): string[] => {
+  const n = name.toLowerCase();
+  const c = cat.toLowerCase();
+  if (n.includes('polera') || n.includes('shirt') || n.includes('camiseta')) {
+    return [
+      'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=800&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?w=800&auto=format&fit=crop&q=80',
+    ];
+  }
+  if (n.includes('short') || n.includes('bermuda')) {
+    return [
+      'https://images.unsplash.com/photo-1591195853828-11db59a44f6b?w=800&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1562157873-818bc0726f68?w=800&auto=format&fit=crop&q=80',
+    ];
+  }
+  if (n.includes('vestido') || c.includes('vestido') || c.includes('gala')) {
+    return [
+      'https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=800&auto=format&fit=crop&q=80',
+    ];
+  }
+  if (n.includes('blazer') || n.includes('chaqueta') || c.includes('chaqueta')) {
+    return [
+      'https://images.unsplash.com/photo-1548624149-f9b1859aa9d0?w=800&auto=format&fit=crop&q=80',
+    ];
+  }
+  return [
+    'https://images.unsplash.com/photo-1523381294911-8d3cead13475?w=800&auto=format&fit=crop&q=80',
+  ];
+};
 
-  // Estados locales para los filtros y búsqueda
+export const CatalogScreen: React.FC<Props> = ({ navigation }) => {
+  const { activeBranch } = useBranchStore();
+  const { items: cartItems, addItem: addToCart } = useCartStore();
+  const cartCount = cartItems.reduce((acc, it) => acc + it.quantity, 0);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [onlyInStock, setOnlyInStock] = useState(false);
+  const [sortBy, setSortBy] = useState<'POPULAR' | 'PRICE_ASC' | 'PRICE_DESC'>('POPULAR');
   const [products, setProducts] = useState<ProductItem[]>(MOCK_PRODUCTS);
+  const [addedToast, setAddedToast] = useState<string | null>(null);
 
-  // Al montar la pantalla, consulta los productos reales del backend NestJS
+  // Carga productos reales del backend + las 3 prendas mockeadas para prueba AR (dos poleras y un short)
   useEffect(() => {
     let isMounted = true;
     (async () => {
@@ -86,59 +118,36 @@ export const CatalogScreen: React.FC<Props> = ({ navigation }) => {
               };
             });
 
-            const catName = (p.categoria?.nombre || '').toLowerCase();
-            const prodName = (p.nombre || '').toLowerCase();
-            const isTorso =
-              prodName.includes('polera') ||
-              prodName.includes('camiseta') ||
-              prodName.includes('crop') ||
-              prodName.includes('blusa') ||
-              prodName.includes('shirt') ||
-              catName.includes('polera') ||
-              catName.includes('camisa');
-            const isWaist =
-              prodName.includes('short') ||
-              prodName.includes('pantalon') ||
-              prodName.includes('bermuda') ||
-              catName.includes('short') ||
-              catName.includes('pantalon') ||
-              catName.includes('deportiv');
-
-            const hasArTryOn = isTorso || isWaist;
-            const arGarmentType: 'SHIRT' | 'SHORTS' = isWaist ? 'SHORTS' : 'SHIRT';
-            const targetRegion: 'TORSO' | 'WAIST' = isWaist ? 'WAIST' : 'TORSO';
+            const catName = p.categoria?.nombre || 'General';
+            const defaultImages = getClothingImages(p.nombre, catName);
 
             return {
-              id: String(p.id),
+              id: `back-${p.id}`,
               name: p.nombre,
               description: p.descripcion || '',
-              category: (p.categoria?.nombre || '').toUpperCase().includes('DEPORTIV')
+              category: catName.toUpperCase().includes('DEPORTIV') || p.nombre.toLowerCase().includes('short')
                 ? 'PANTS'
-                : (p.categoria?.nombre || '').toUpperCase().includes('GALA')
+                : catName.toUpperCase().includes('GALA')
                 ? 'DRESSES'
                 : 'SHIRTS',
-              categoryLabel: p.categoria?.nombre || 'General',
+              categoryLabel: catName,
               season: 'SPRING_SUMMER',
               seasonLabel: 'Colección 2026',
               basePrice: Number(p.precio) || 0,
               rating: 4.9,
-              hasArTryOn,
-              arGarmentType,
-              targetRegion,
-              images: p.imagenUrl
-                ? [p.imagenUrl]
-                : [
-                    'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=500&auto=format&fit=crop&q=60',
-                    'https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?w=500&auto=format&fit=crop&q=60',
-                  ],
+              hasArTryOn: false, // Las prendas normales de backend no tienen modelo AR
+              images: p.imagenUrl ? [p.imagenUrl] : defaultImages,
               variants,
               branchStocks,
             };
           });
-          setProducts(remoteItems);
+
+          // Solo las 3 prendas que existían antes para AR (dos poleras y un short) tienen AR habilitado
+          const arMockItems = MOCK_PRODUCTS.filter((p) => p.hasArTryOn === true);
+          setProducts([...remoteItems, ...arMockItems]);
         }
       } catch {
-        // Fallback a MOCK_PRODUCTS ya cargados
+        // Fallback en caso de que el backend esté temporalmente inaccesible
       }
     })();
     return () => {
@@ -157,162 +166,496 @@ export const CatalogScreen: React.FC<Props> = ({ navigation }) => {
     );
   };
 
-  const filteredProducts = products.filter(p => {
-    const matchesSearch = 
-      p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.description.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = selectedCategory === 'ALL' || p.category === selectedCategory;
-    const branchStock = getProductBranchStock(p, activeBranch.id);
-    const matchesStock = !onlyInStock || branchStock > 0;
+  const filteredProducts = useMemo(() => {
+    let list = products.filter((p) => {
+      const matchesSearch =
+        p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        p.description.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesCategory = selectedCategory === 'ALL' || p.category === selectedCategory;
+      const branchStock = getProductBranchStock(p, activeBranch.id);
+      const matchesStock = !onlyInStock || branchStock > 0;
 
-    return matchesSearch && matchesCategory && matchesStock;
-  });
+      return matchesSearch && matchesCategory && matchesStock;
+    });
 
-  const renderProductCard = ({ item }: { item: ProductItem }) => {
+    if (sortBy === 'PRICE_ASC') {
+      list.sort((a, b) => a.basePrice - b.basePrice);
+    } else if (sortBy === 'PRICE_DESC') {
+      list.sort((a, b) => b.basePrice - a.basePrice);
+    }
+
+    return list;
+  }, [products, searchTerm, selectedCategory, onlyInStock, sortBy, activeBranch.id]);
+
+  const handleQuickAdd = (product: ProductItem) => {
+    const variant = product.variants[0] || {
+      id: `var-${product.id}-default`,
+      sku: `SKU-${product.id}`,
+      sizeName: 'M',
+      colorName: 'Predeterminado',
+      colorHex: '#1E293B',
+      price: product.basePrice,
+      availableStock: 10,
+    };
+
+    addToCart({
+      productId: product.id,
+      variantId: variant.id,
+      name: product.name,
+      sizeName: variant.sizeName,
+      colorName: variant.colorName,
+      colorHex: variant.colorHex,
+      price: variant.price,
+      quantity: 1,
+      imageUrl: product.images[0],
+    });
+
+    setAddedToast(`¡${product.name} añadido a tu bolsa!`);
+    setTimeout(() => {
+      setAddedToast(null);
+    }, 2000);
+  };
+
+  const renderProductItem = ({ item }: { item: ProductItem }) => {
     const stockInBranch = getProductBranchStock(item, activeBranch.id);
     const isAvailable = stockInBranch > 0;
 
     return (
-      <TouchableOpacity
-        activeOpacity={0.85}
-        onPress={() => navigation.navigate('ProductDetail', { productId: item.id })}
-        className="flex-1 m-1.5 bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-xs"
+      <View
+        style={{
+          flex: 1,
+          margin: 6,
+          backgroundColor: '#FFFFFF',
+          borderRadius: 20,
+          borderWidth: 1,
+          borderColor: '#E2E8F0',
+          overflow: 'hidden',
+          elevation: 2,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 1 },
+          shadowOpacity: 0.05,
+          shadowRadius: 4,
+        }}
       >
-        <View className="relative">
+        {/* Imagen del Producto */}
+        <TouchableOpacity
+          activeOpacity={0.88}
+          onPress={() => navigation.navigate('ProductDetail', { productId: item.id })}
+          style={{ position: 'relative', width: '100%', height: 180, backgroundColor: '#F1F5F9' }}
+        >
           <Image
             source={{ uri: item.images[0] }}
-            className="w-full h-44 bg-gray-100"
+            style={{ width: '100%', height: '100%' }}
             resizeMode="cover"
           />
+
+          {/* Badge AR SOLO en las prendas que tienen modelo AR */}
           {item.hasArTryOn && (
-            <View className="absolute top-2 left-2 bg-purple-600/90 px-2 py-0.5 rounded-full flex-row items-center gap-1">
-              <Sparkles size={10} color="#FFFFFF" />
-              <Text className="text-[10px] font-bold text-white">AR 3D</Text>
-            </View>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('VirtualTryOn', { productId: item.id })}
+              activeOpacity={0.8}
+              style={{
+                position: 'absolute',
+                top: 8,
+                left: 8,
+                backgroundColor: '#7C3AED',
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+                borderRadius: 20,
+                flexDirection: 'row',
+                alignItems: 'center',
+                shadowColor: '#7C3AED',
+                shadowOpacity: 0.3,
+                shadowRadius: 4,
+                elevation: 3,
+              }}
+            >
+              <Sparkles size={11} color="#FFFFFF" />
+              <Text style={{ fontSize: 9, fontWeight: '900', color: '#FFFFFF', marginLeft: 4, letterSpacing: 0.5 }}>
+                PROBAR AR
+              </Text>
+            </TouchableOpacity>
           )}
 
-          <View className={`absolute bottom-2 left-2 px-2 py-0.5 rounded-full flex-row items-center gap-1 ${
-            isAvailable ? 'bg-emerald-600/90' : 'bg-gray-800/80'
-          }`}>
+          {/* Badge Disponibilidad en Sucursal */}
+          <View
+            style={{
+              position: 'absolute',
+              bottom: 8,
+              left: 8,
+              paddingHorizontal: 8,
+              paddingVertical: 3,
+              borderRadius: 12,
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: isAvailable ? 'rgba(15, 23, 42, 0.88)' : 'rgba(71, 85, 105, 0.88)',
+            }}
+          >
             {isAvailable ? (
               <>
-                <CheckCircle2 size={10} color="#FFFFFF" />
-                <Text className="text-[9px] font-bold text-white">{stockInBranch} en tienda</Text>
+                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#34D399', marginRight: 5 }} />
+                <Text style={{ fontSize: 10, fontWeight: '700', color: '#FFFFFF' }}>{stockInBranch} en tienda</Text>
               </>
             ) : (
               <>
-                <AlertCircle size={10} color="#FFFFFF" />
-                <Text className="text-[9px] font-bold text-white">Agotado local</Text>
+                <AlertCircle size={10} color="#FCA5A5" style={{ marginRight: 4 }} />
+                <Text style={{ fontSize: 10, fontWeight: '700', color: '#FFFFFF' }}>Agotado local</Text>
               </>
             )}
           </View>
-        </View>
+        </TouchableOpacity>
 
-        <View className="p-3">
-          <Text className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">
+        {/* Información de Prenda */}
+        <View style={{ padding: 12 }}>
+          <Text style={{ fontSize: 10, fontWeight: '800', color: '#2563EB', textTransform: 'uppercase', letterSpacing: 0.5 }}>
             {item.categoryLabel}
           </Text>
-          <Text className="text-xs font-bold text-gray-900 mt-0.5" numberOfLines={1}>
-            {item.name}
-          </Text>
-          <Text className="text-sm font-black text-gray-900 mt-1">
-            Bs. {item.basePrice.toFixed(2)}
-          </Text>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => navigation.navigate('ProductDetail', { productId: item.id })}
+          >
+            <Text style={{ fontSize: 13, fontWeight: '800', color: '#0F172A', marginTop: 2 }} numberOfLines={1}>
+              {item.name}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Muestras de Colores */}
+          {item.variants && item.variants.length > 0 && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6 }}>
+              {item.variants.slice(0, 3).map((v, i) => (
+                <View
+                  key={i}
+                  style={{
+                    backgroundColor: v.colorHex || '#333333',
+                    width: 10,
+                    height: 10,
+                    borderRadius: 5,
+                    borderWidth: 1,
+                    borderColor: '#CBD5E1',
+                    marginRight: 4,
+                  }}
+                />
+              ))}
+              {item.variants.length > 3 && (
+                <Text style={{ fontSize: 10, color: '#64748B', fontWeight: '600' }}>+{item.variants.length - 3}</Text>
+              )}
+            </View>
+          )}
+
+          {/* Precios y Botón Rápido */}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#F1F5F9' }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 10, color: '#64748B', fontWeight: '500' }}>Precio</Text>
+              <Text style={{ fontSize: 14, fontWeight: '900', color: '#0F172A' }}>
+                Bs. {item.basePrice.toFixed(2)}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              onPress={() => handleQuickAdd(item)}
+              activeOpacity={0.7}
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 12,
+                backgroundColor: '#0F172A',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              accessibilityLabel="Añadir a la bolsa"
+            >
+              <Plus size={16} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
         </View>
-      </TouchableOpacity>
+      </View>
     );
   };
 
   return (
-    <ScreenContainer className="bg-gray-50/50 flex-1" style={{ flex: 1 }}>
-      {/* Top Bar with Branch Selector */}
-      <View className="px-4 pt-2 pb-3 bg-white border-b border-gray-100 flex-row justify-between items-center">
-        <View>
-          <Text className="text-xs font-bold text-blue-600 tracking-wider uppercase">
-            Catálogo Retail
-          </Text>
-          <Text className="text-lg font-black text-gray-900">
-            Prendas Exclusivas
-          </Text>
-        </View>
-        <BranchHeaderSelector />
-      </View>
+    <ScreenContainer className="bg-gray-50 flex-1" style={{ flex: 1 }}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
-      {/* Search and Filters Bar */}
-      <View className="p-4 bg-white border-b border-gray-100">
-        <View className="flex-row items-center bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
-          <Search size={16} color="#9CA3AF" />
-          <TextInput
-            value={searchTerm}
-            onChangeText={setSearchTerm}
-            placeholder="Buscar por prenda, estilo o tejido..."
-            className="flex-1 ml-2 text-xs text-gray-900"
-          />
-        </View>
-
-        {/* Categories Chips */}
-        <FlatList
-          data={CATEGORIES}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          keyExtractor={(item) => item.key}
-          style={{ marginTop: 12, marginBottom: 4 }}
-          contentContainerStyle={{ paddingHorizontal: 2 }}
-          renderItem={({ item }) => {
-            const isSelected = selectedCategory === item.key;
-            return (
-              <TouchableOpacity
-                onPress={() => setSelectedCategory(item.key)}
-                activeOpacity={0.7}
-                className={`px-3 py-1.5 rounded-full mr-2 border ${
-                  isSelected ? 'bg-blue-600 border-blue-600' : 'bg-gray-50 border-gray-200'
-                }`}
-              >
-                <Text className={`text-xs font-semibold ${isSelected ? 'text-white' : 'text-gray-600'}`}>
-                  {item.label}
-                </Text>
-              </TouchableOpacity>
-            );
+      {/* Toast flotante de adición al carrito */}
+      {addedToast && (
+        <View
+          style={{
+            position: 'absolute',
+            top: 60,
+            left: 20,
+            right: 20,
+            zIndex: 99,
+            backgroundColor: '#0F172A',
+            paddingVertical: 12,
+            paddingHorizontal: 16,
+            borderRadius: 14,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            elevation: 8,
           }}
-        />
-
-        {/* Switch Only in Branch Stock */}
-        <TouchableOpacity
-          onPress={() => setOnlyInStock(!onlyInStock)}
-          activeOpacity={0.7}
-          className="flex-row items-center justify-between mt-3 pt-2 border-t border-gray-100"
         >
-          <Text className="text-xs font-medium text-gray-600">
-            Mostrar solo con existencias en {activeBranch.name}
-          </Text>
-          <View className={`w-10 h-5 rounded-full p-0.5 justify-center ${
-            onlyInStock ? 'bg-blue-600 items-end' : 'bg-gray-300 items-start'
-          }`}>
-            <View className="w-4 h-4 rounded-full bg-white shadow-xs" />
-          </View>
-        </TouchableOpacity>
-      </View>
+          <CheckCircle2 size={16} color="#34D399" style={{ marginRight: 8 }} />
+          <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>{addedToast}</Text>
+        </View>
+      )}
 
-      {/* Product Grid */}
+      {/* Grid de Productos con Header integrado */}
       <FlatList
         data={filteredProducts}
         keyExtractor={(item) => item.id}
         numColumns={2}
-        style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 10, paddingBottom: 60 }}
-        renderItem={renderProductCard}
+        contentContainerStyle={{ paddingBottom: 32 }}
         showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          <View className="p-8 items-center justify-center">
-            <Text className="text-sm font-semibold text-gray-500 text-center">
-              No se encontraron prendas que coincidan con la búsqueda o stock de la tienda.
-            </Text>
+        ListHeaderComponent={
+          <View>
+            {/* Barra Superior con Selector de Sucursal y Carrito */}
+            <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 10, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <BranchHeaderSelector />
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('MainTabs', { screen: 'CartTab' })}
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 12,
+                    backgroundColor: '#F8FAFC',
+                    borderWidth: 1,
+                    borderColor: '#E2E8F0',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    position: 'relative',
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <ShoppingCart size={18} color="#0F172A" />
+                  {cartCount > 0 && (
+                    <View
+                      style={{
+                        position: 'absolute',
+                        top: -4,
+                        right: -4,
+                        backgroundColor: '#2563EB',
+                        borderRadius: 10,
+                        width: 18,
+                        height: 18,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Text style={{ fontSize: 9, fontWeight: '900', color: '#FFFFFF' }}>{cartCount}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Banner Principal de Novedades y Probador AR */}
+            <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 }}>
+              <View
+                style={{
+                  backgroundColor: '#0B0F19',
+                  borderRadius: 22,
+                  padding: 18,
+                  borderWidth: 1,
+                  borderColor: '#1E293B',
+                  position: 'relative',
+                  overflow: 'hidden',
+                }}
+              >
+                {/* Badge AR Experiencia 3D */}
+                <View
+                  style={{
+                    position: 'absolute',
+                    top: 14,
+                    right: 14,
+                    backgroundColor: 'rgba(124, 58, 237, 0.25)',
+                    borderColor: '#A855F7',
+                    borderWidth: 1,
+                    paddingHorizontal: 10,
+                    paddingVertical: 4,
+                    borderRadius: 20,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                  }}
+                >
+                  <Sparkles size={11} color="#E9D5FF" />
+                  <Text style={{ fontSize: 10, fontWeight: '800', color: '#F3E8FF', marginLeft: 4, letterSpacing: 0.5 }}>
+                    EXPERIENCIA AR 3D
+                  </Text>
+                </View>
+
+                <Text style={{ fontSize: 11, fontWeight: '800', color: '#60A5FA', textTransform: 'uppercase', letterSpacing: 1 }}>
+                  Nueva Temporada 2026
+                </Text>
+                <Text style={{ fontSize: 18, fontWeight: '900', color: '#FFFFFF', marginTop: 4, maxWidth: 220, lineHeight: 23 }}>
+                  Pruébate la ropa con tu cámara en vivo
+                </Text>
+                <Text style={{ fontSize: 11, color: '#94A3B8', marginTop: 4, maxWidth: 240, lineHeight: 15 }}>
+                  Realidad Aumentada con ajuste anatómico de hombros y cintura.
+                </Text>
+
+                <View style={{ flexDirection: 'row', marginTop: 14 }}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      const arProduct = products.find((p) => p.hasArTryOn) || products[0];
+                      navigation.navigate('VirtualTryOn', { productId: arProduct.id });
+                    }}
+                    style={{
+                      backgroundColor: '#FFFFFF',
+                      paddingHorizontal: 16,
+                      paddingVertical: 9,
+                      borderRadius: 12,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      elevation: 2,
+                    }}
+                    activeOpacity={0.85}
+                  >
+                    <Camera size={14} color="#0F172A" />
+                    <Text style={{ fontSize: 12, fontWeight: '900', color: '#0F172A', marginLeft: 6 }}>Probar con AR</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+
+            {/* Buscador de Prendas */}
+            <View style={{ paddingHorizontal: 16, paddingVertical: 8 }}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  backgroundColor: '#FFFFFF',
+                  borderWidth: 1,
+                  borderColor: '#E2E8F0',
+                  borderRadius: 16,
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                }}
+              >
+                <Search size={16} color="#64748B" />
+                <TextInput
+                  value={searchTerm}
+                  onChangeText={setSearchTerm}
+                  placeholder="Buscar poleras, shorts, ropa casual..."
+                  style={{ flex: 1, marginLeft: 10, fontSize: 13, color: '#0F172A', paddingVertical: 0 }}
+                  placeholderTextColor="#94A3B8"
+                />
+                {searchTerm.length > 0 && (
+                  <TouchableOpacity onPress={() => setSearchTerm('')} style={{ padding: 2 }}>
+                    <X size={14} color="#94A3B8" />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+
+            {/* Categorías Horizontales con Iconos (Diseño limpio y no roto) */}
+            <FlatList
+              data={CATEGORIES}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={(item) => item.key}
+              style={{ marginTop: 2, marginBottom: 8 }}
+              contentContainerStyle={{ paddingHorizontal: 16 }}
+              renderItem={({ item }) => {
+                const isSelected = selectedCategory === item.key;
+                return (
+                  <TouchableOpacity
+                    onPress={() => setSelectedCategory(item.key)}
+                    activeOpacity={0.7}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      paddingHorizontal: 14,
+                      paddingVertical: 8,
+                      marginRight: 8,
+                      borderRadius: 14,
+                      backgroundColor: isSelected ? '#0F172A' : '#FFFFFF',
+                      borderWidth: 1,
+                      borderColor: isSelected ? '#0F172A' : '#E2E8F0',
+                      elevation: isSelected ? 2 : 0,
+                    }}
+                  >
+                    <Text style={{ fontSize: 13 }}>{item.icon}</Text>
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontWeight: '700',
+                        color: isSelected ? '#FFFFFF' : '#334155',
+                        marginLeft: 6,
+                      }}
+                    >
+                      {item.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              }}
+            />
+
+            {/* Barra de Filtros de Stock y Orden */}
+            <View
+              style={{
+                paddingHorizontal: 16,
+                paddingVertical: 10,
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                backgroundColor: '#FFFFFF',
+                borderTopWidth: 1,
+                borderBottomWidth: 1,
+                borderColor: '#F1F5F9',
+                marginBottom: 6,
+              }}
+            >
+              <TouchableOpacity
+                onPress={() => setOnlyInStock(!onlyInStock)}
+                activeOpacity={0.7}
+                style={{ flexDirection: 'row', alignItems: 'center' }}
+              >
+                <View
+                  style={{
+                    width: 18,
+                    height: 18,
+                    borderRadius: 5,
+                    borderWidth: 1.5,
+                    borderColor: onlyInStock ? '#2563EB' : '#CBD5E1',
+                    backgroundColor: onlyInStock ? '#2563EB' : '#FFFFFF',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginRight: 8,
+                  }}
+                >
+                  {onlyInStock && <CheckCircle2 size={12} color="#FFFFFF" />}
+                </View>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: '#1E293B' }}>
+                  Solo en {activeBranch.name.split(' ')[0]}
+                </Text>
+              </TouchableOpacity>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <TouchableOpacity
+                  onPress={() => {
+                    if (sortBy === 'POPULAR') setSortBy('PRICE_ASC');
+                    else if (sortBy === 'PRICE_ASC') setSortBy('PRICE_DESC');
+                    else setSortBy('POPULAR');
+                  }}
+                  style={{ flexDirection: 'row', alignItems: 'center', padding: 4 }}
+                >
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#2563EB', marginRight: 4 }}>
+                    {sortBy === 'POPULAR'
+                      ? 'Populares'
+                      : sortBy === 'PRICE_ASC'
+                      ? 'Menor Precio'
+                      : 'Mayor Precio'}
+                  </Text>
+                  <Text style={{ fontSize: 10, color: '#64748B' }}>({filteredProducts.length})</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
         }
+        renderItem={renderProductItem}
       />
-
-      {/* Global Branch Modal */}
-      <BranchSelectionModal />
     </ScreenContainer>
   );
 };

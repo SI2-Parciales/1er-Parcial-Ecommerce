@@ -14,7 +14,13 @@ interface CartState {
   getSubtotal: () => number;
   getShippingCost: () => number;
   getTotal: () => number;
-  createOrder: (paymentMethod: 'CARD_GATEWAY' | 'STATIC_QR', branchName?: string, receiptUrl?: string) => ClientOrder;
+  createOrder: (
+    paymentMethod: 'CARD_GATEWAY' | 'STATIC_QR' | 'STORE_CASH',
+    branchName?: string,
+    receiptUrl?: string,
+    discountAmount?: number,
+    couponCode?: string
+  ) => ClientOrder;
 }
 
 const INITIAL_ORDERS: ClientOrder[] = [
@@ -119,13 +125,21 @@ export const useCartStore = create<CartState>((set, get) => {
       return Math.round((get().getSubtotal() + get().getShippingCost()) * 100) / 100;
     },
 
-    createOrder: (paymentMethod, branchName, receiptUrl) => {
+    createOrder: (paymentMethod, branchName, receiptUrl, discountAmount = 0, couponCode) => {
       const subtotal = get().getSubtotal();
       const shippingCost = get().getShippingCost();
-      const total = get().getTotal();
-      const orderNum = `ORD-${Math.floor(100000 + Math.random() * 900000)}`;
+      const calculatedTotal = Math.max(0, Math.round((subtotal + shippingCost - discountAmount) * 100) / 100);
+      const orderNum = paymentMethod === 'STORE_CASH' 
+        ? `RES-${Math.floor(100000 + Math.random() * 900000)}` 
+        : `ORD-${Math.floor(100000 + Math.random() * 900000)}`;
 
       const orderId = `ord-${Date.now()}`;
+      const status = paymentMethod === 'CARD_GATEWAY' 
+        ? 'PAID' 
+        : paymentMethod === 'STORE_CASH' 
+          ? 'RESERVED_IN_STORE' 
+          : 'PENDING_MANUAL_VERIFICATION';
+
       const newOrder: ClientOrder = {
         id: orderId,
         orderNumber: orderNum,
@@ -133,23 +147,25 @@ export const useCartStore = create<CartState>((set, get) => {
         subtotal,
         shippingCost,
         impuestos: 0,
-        total,
+        total: calculatedTotal,
+        discountAmount,
+        couponCode,
         deliveryType: get().deliveryType,
         branchName: branchName || 'Sucursal Central',
         usuario_id: 'user-4',
         direccion_id: 'dir-2',
         paymentMethod,
         paymentReceiptUrl: receiptUrl,
-        status: paymentMethod === 'CARD_GATEWAY' ? 'PAID' : 'PENDING_MANUAL_VERIFICATION',
+        status,
         createdAt: new Date().toISOString(),
         pago: {
           id: `pago-${Date.now()}`,
           orden_id: orderId,
-          proveedor: paymentMethod === 'CARD_GATEWAY' ? 'CYBERSOURCE' : 'QR_SIMPLE',
-          monto: total,
+          proveedor: paymentMethod === 'CARD_GATEWAY' ? 'CYBERSOURCE' : paymentMethod === 'STATIC_QR' ? 'QR_SIMPLE' : 'EFECTIVO_TIENDA',
+          monto: calculatedTotal,
           estado: paymentMethod === 'CARD_GATEWAY' ? 'EXITOSO' : 'PENDIENTE',
           referencia: orderNum,
-          metadata: { branchName, receiptUrl: receiptUrl || null },
+          metadata: { branchName, receiptUrl: receiptUrl || null, discountAmount, couponCode },
           creado_en: new Date().toISOString(),
         },
       };
