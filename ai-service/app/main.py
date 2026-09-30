@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from httpx import AsyncClient
 
 from app.agents.report_agent import ReportAgent
@@ -34,6 +35,13 @@ async def lifespan(application: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=get_settings().allowed_cors_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Accept", "Authorization", "Content-Type"],
+)
 app.include_router(reports_router)
 app.include_router(reports_ask_router)
 app.include_router(reports_voice_router)
