@@ -1,6 +1,50 @@
-from fastapi import FastAPI
+from contextlib import asynccontextmanager
 
-app = FastAPI()
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from httpx import AsyncClient
+
+from app.agents.report_agent import ReportAgent
+from app.api.routes.reports import router as reports_router
+from app.api.routes.reports_ask import router as reports_ask_router
+from app.api.routes.reports_voice import router as reports_voice_router
+from app.clients.gemini_client import GeminiClient
+from app.clients.nestjs_client import NestJSClient
+from app.core.config import get_settings
+from app.services.report_service import ReportService
+from app.services.speech_service import SpeechService
+
+
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    settings = get_settings()
+    async with AsyncClient(timeout=settings.nestjs_api_timeout_seconds) as http_client:
+        report_service = ReportService(NestJSClient(settings, http_client))
+        gemini_client = GeminiClient(settings)
+        application.state.report_service = report_service
+        application.state.speech_service = SpeechService(settings)
+        application.state.report_agent = ReportAgent(
+            gemini_client,
+            report_service,
+            settings,
+        )
+        try:
+            yield
+        finally:
+            await gemini_client.aclose()
+
+
+app = FastAPI(lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=get_settings().allowed_cors_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Accept", "Authorization", "Content-Type"],
+)
+app.include_router(reports_router)
+app.include_router(reports_ask_router)
+app.include_router(reports_voice_router)
 
 
 @app.get("/")
