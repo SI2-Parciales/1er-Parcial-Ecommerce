@@ -5,6 +5,7 @@ import { RoleGuard } from '@shared/components/guards/RoleGuard';
 import { DashboardLayout } from '@shared/components/layout/DashboardLayout';
 import { LoginPage } from '@modulos/autenticacion/paginas/LoginPage';
 import { ForbiddenPage } from '@shared/pages/ForbiddenPage';
+import { LandingPage } from '@modulos/landing/paginas/LandingPage';
 
 // Lazy loading para optimización de bundle y partición de rutas
 const DashboardGlobalPage = lazy(() =>
@@ -74,6 +75,14 @@ function RouteLoadingFallback() {
 
 export const router = createBrowserRouter([
   {
+    path: '/',
+    element: <LandingPage />,
+  },
+  {
+    path: '/landing',
+    element: <LandingPage />,
+  },
+  {
     path: '/login',
     element: <LoginPage />,
   },
@@ -82,15 +91,17 @@ export const router = createBrowserRouter([
     element: <ForbiddenPage />,
   },
   {
-    path: '/',
+    path: '/admin',
+    element: <Navigate to="/dashboard" replace />,
+  },
+  {
     element: <ProtectedRoute />,
     children: [
       {
-        path: '/',
         element: <DashboardLayout />,
         children: [
           {
-            index: true,
+            path: 'dashboard',
             element: (
               <RoleGuard allowedRoles={['ADMIN']}>
                 <Suspense fallback={<RouteLoadingFallback />}>

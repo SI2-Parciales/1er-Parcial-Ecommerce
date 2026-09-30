@@ -2,9 +2,10 @@ import { NavLink } from 'react-router-dom';
 import { navigation } from '../../config/navigation';
 import { useAuthStore } from '@modulos/autenticacion/almacen/auth.store';
 import { cn } from '@shared/lib/utils';
-import { Menu, Sparkles } from 'lucide-react';
+import { Menu } from 'lucide-react';
 import { useState } from 'react';
 import { colores } from '@shared/theme';
+import logoImg from '@assets/logo-clean.png';
 
 export function Sidebar() {
   const { hasRole, user } = useAuthStore();
@@ -24,16 +25,19 @@ export function Sidebar() {
     >
       <div
         style={{ borderColor: colores.bordeSutil }}
-        className="h-16 flex items-center justify-between px-4 border-b"
+        className="h-16 flex items-center justify-between px-3.5 border-b"
       >
-        {!collapsed && (
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-xs">
-              <Sparkles className="w-4 h-4" />
-            </div>
+        {!collapsed ? (
+          <div className="flex items-center gap-2.5">
+            <img src={logoImg} alt="FashionStore" className="w-8 h-8 object-contain rounded-lg" />
             <span className="font-black text-base text-gray-900 tracking-tight">FashionStore</span>
           </div>
+        ) : (
+          <div className="flex items-center justify-center pl-1">
+            <img src={logoImg} alt="FashionStore" className="w-7 h-7 object-contain" />
+          </div>
         )}
+
         <button 
           onClick={() => setCollapsed(!collapsed)} 
           className="p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition"

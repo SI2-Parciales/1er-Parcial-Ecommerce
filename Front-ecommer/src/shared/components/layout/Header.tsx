@@ -49,6 +49,15 @@ export function Header() {
       </div>
 
       <div className="flex items-center space-x-3">
+        <button
+          onClick={() => navigate('/')}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 hover:bg-blue-50 text-gray-700 hover:text-blue-700 rounded-xl border border-gray-200 text-xs font-bold transition cursor-pointer"
+          title="Ver Tienda / Landing Page"
+        >
+          <Store className="w-3.5 h-3.5 text-blue-600" />
+          <span className="hidden sm:inline">Ver Tienda</span>
+        </button>
+
         <div className="flex items-center space-x-2.5 bg-gray-50 px-3 py-1.5 rounded-xl border border-gray-200">
           <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-xs">
             <UserIcon className="w-3.5 h-3.5" />

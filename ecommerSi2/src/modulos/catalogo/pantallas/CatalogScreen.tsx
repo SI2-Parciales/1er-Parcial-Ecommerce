@@ -428,10 +428,19 @@ export const CatalogScreen: React.FC<Props> = ({ navigation }) => {
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
           <View>
-            {/* Barra Superior con Selector de Sucursal y Carrito */}
+            {/* Barra Superior con Logo, Selector de Sucursal y Carrito */}
             <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 10, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <BranchHeaderSelector />
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, marginRight: 8 }}>
+                  <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center', padding: 3 }}>
+                    <Image
+                      source={require('../../../../assets/logo-clean.png')}
+                      style={{ width: '100%', height: '100%' }}
+                      resizeMode="contain"
+                    />
+                  </View>
+                  <BranchHeaderSelector />
+                </View>
                 <TouchableOpacity
                   onPress={() => navigation.navigate('MainTabs', { screen: 'CartTab' })}
                   style={{

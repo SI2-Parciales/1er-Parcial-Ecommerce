@@ -6,6 +6,12 @@ export const stockAdjustmentSchema = z.object({
   newQuantity: z.number().int().nonnegative('La cantidad debe ser mayor o igual a 0'),
   reason: z.enum(['MERMA_DANIO', 'DISCREPANCIA_AUDITORIA', 'DEVOLUCION_PROVEEDOR', 'CORRECCION_INGRESO']),
   comment: z.string().min(5, 'El comentario debe tener al menos 5 caracteres'),
+  currentStock: z.number().optional(),
+  garmentName: z.string().optional(),
+  sku: z.string().optional(),
+  sizeName: z.string().optional(),
+  colorName: z.string().optional(),
 });
 
 export type StockAdjustmentValues = z.infer<typeof stockAdjustmentSchema>;
+

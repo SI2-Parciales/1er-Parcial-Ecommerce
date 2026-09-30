@@ -63,43 +63,85 @@ export const inventoryService = {
   },
 
   async createAdjustment(payload: StockAdjustmentValues): Promise<BranchStockItem> {
-    try {
-      const branchIdNum = parseInt(payload.branchId, 10);
-      const variantIdNum = parseInt(payload.variantId, 10);
-      if (!isNaN(branchIdNum) && !isNaN(variantIdNum)) {
-        const isMerma = payload.reason === 'MERMA_DANIO' || payload.reason === 'DISCREPANCIA_AUDITORIA';
+    const branchClean = String(payload.branchId).replace(/\D/g, '');
+    const branchIdNum = parseInt(branchClean, 10) || 1;
+    const variantClean = String(payload.variantId).replace(/\D/g, '');
+    const variantIdNum = parseInt(variantClean, 10);
+    const currentStock = typeof payload.currentStock === 'number' ? payload.currentStock : 0;
+    const diff = payload.newQuantity - currentStock;
+
+    if (!isNaN(variantIdNum) && variantIdNum > 0 && diff !== 0) {
+      try {
+        const isMerma = diff < 0 || payload.reason === 'MERMA_DANIO' || payload.reason === 'DISCREPANCIA_AUDITORIA';
         const tipo = isMerma ? 'MERMA' : 'RECEPCION';
-        
+        const cantidad = Math.abs(diff) || 1;
+
+        const body: Record<string, any> = {
+          tipo,
+          varianteProductoId: variantIdNum,
+          cantidad,
+          observacion: `[${payload.reason}] ${payload.comment || 'Ajuste manual de existencias'}`,
+        };
+
+        if (tipo === 'RECEPCION') {
+          body.sucursalDestinoId = branchIdNum;
+        } else {
+          body.sucursalOrigenId = branchIdNum;
+          body.origenUnidades = 'DISPONIBLE';
+        }
+
         await apiClient.post(
           '/inventario/movimientos',
-          {
-            tipo,
-            varianteProductoId: variantIdNum,
-            cantidad: Math.max(1, payload.newQuantity),
-            sucursalOrigenId: branchIdNum,
-            observacion: `[${payload.reason}] ${payload.comment}`,
-            ...(tipo === 'MERMA' ? { origenUnidades: 'DISPONIBLE' } : {}),
-          },
+          body,
           {
             headers: {
               'Idempotency-Key': crypto.randomUUID(),
             },
           },
         );
+
+        // Mantener sincronizado el almacenamiento local mock
+        try {
+          await mockDb.createAdjustment(payload);
+        } catch {
+          // Si el mock no lo tiene, ignorar
+        }
+
+        return {
+          id: `inv-${branchIdNum}-${variantIdNum}`,
+          branchId: String(payload.branchId),
+          branchName: branchIdNum === 2 ? 'Sucursal Equipetrol (Santa Cruz)' : 'Sucursal Central (La Paz)',
+          variantId: String(payload.variantId),
+          sku: payload.sku || `SKU-${variantIdNum}`,
+          barcode: `777000${variantIdNum}`,
+          garmentName: payload.garmentName || 'Prenda de Colección',
+          sizeName: payload.sizeName || 'M',
+          colorName: payload.colorName || 'Predeterminado',
+          category: 'Ropa Casual',
+          availableStock: payload.newQuantity,
+          reservedStock: 0,
+          totalStock: payload.newQuantity,
+          minAlertThreshold: 5,
+        };
+      } catch (err: any) {
+        console.warn('Backend /inventario/movimientos devolvió error, aplicando ajuste en almacenamiento local:', err?.response?.data || err);
       }
-    } catch (err) {
-      console.warn('Error registrando ajuste en backend /inventario/movimientos, aplicando en mock local:', err);
     }
+
     return mockDb.createAdjustment(payload);
   },
 
   async createTransfer(payload: StockTransferPayload): Promise<StockTransfer> {
     try {
-      const originId = parseInt(payload.originBranchId, 10);
-      const destId = parseInt(payload.destinationBranchId, 10);
+      const originClean = String(payload.originBranchId).replace(/\D/g, '');
+      const destClean = String(payload.destinationBranchId).replace(/\D/g, '');
+      const originId = parseInt(originClean, 10) || 1;
+      const destId = parseInt(destClean, 10) || 2;
+
       if (!isNaN(originId) && !isNaN(destId)) {
         for (const item of payload.items) {
-          const variantId = parseInt(item.variantId, 10);
+          const variantClean = String(item.variantId).replace(/\D/g, '');
+          const variantId = parseInt(variantClean, 10);
           if (!isNaN(variantId) && item.quantity > 0) {
             await apiClient.post(
               '/inventario/movimientos',

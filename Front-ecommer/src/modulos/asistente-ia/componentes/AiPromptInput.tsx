@@ -9,6 +9,7 @@ import { cn } from '@shared/lib/utils';
 
 interface AiPromptInputProps {
  onSubmit: (prompt: string) => void;
+ onSubmitVoice?: (audioBlob: Blob) => void;
  isGenerating: boolean;
 }
 
@@ -20,9 +21,10 @@ const TIMEFRAME_OPTIONS: Array<{ value: AiTimeframe; label: string }> = [
  { value: 'YEAR_TO_DATE', label: 'Año en Curso' },
 ];
 
-export function AiPromptInput({ onSubmit, isGenerating }: AiPromptInputProps) {
+export function AiPromptInput({ onSubmit, onSubmitVoice, isGenerating }: AiPromptInputProps) {
  const { user } = useAuthStore();
  const isAdmin = user?.role === 'ADMIN';
+
 
  const [promptText, setPromptText] = useState('');
  const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -36,7 +38,13 @@ export function AiPromptInput({ onSubmit, isGenerating }: AiPromptInputProps) {
  onTranscriptComplete: (finalText) => {
  setPromptText((prev) => (prev ? `${prev} ${finalText}` : finalText));
  },
+ onAudioRecorded: (blob) => {
+ if (onSubmitVoice) {
+ onSubmitVoice(blob);
+ }
+ },
  });
+
 
  // Auto-ajuste de altura del textarea
  useEffect(() => {

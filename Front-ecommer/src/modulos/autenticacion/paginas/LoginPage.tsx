@@ -1,17 +1,17 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { loginSchema, type LoginFormData } from '../esquemas/login.schema';
 import { authService } from '../servicios/auth.service';
 import { useAuthStore } from '../almacen/auth.store';
 import { handleApiError } from '@core/http/error-handler';
 import {
   Loader2,
-  ShoppingBag,
   Mail,
   Lock,
   ArrowRight,
+  ArrowLeft,
   ShieldCheck,
   Sparkles,
   Store,
@@ -19,6 +19,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { cn } from '@shared/lib/utils';
+import logoClean from '@assets/logo-clean.png';
 
 export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
@@ -51,7 +52,7 @@ export function LoginPage() {
 
       switch (response.user.role) {
         case 'ADMIN':
-          navigate('/');
+          navigate('/dashboard');
           break;
         case 'BRANCH_MANAGER':
           navigate('/reservations');
@@ -90,8 +91,18 @@ export function LoginPage() {
         aria-hidden="true"
       />
 
+      {/* Botón flotante para regresar a la Landing Page */}
+      <Link
+        to="/"
+        className="absolute top-4 left-4 sm:top-5 sm:left-6 z-30 inline-flex items-center gap-2 px-3.5 py-1.5 bg-white/95 hover:bg-white text-gray-700 hover:text-blue-600 rounded-full border border-gray-200/90 shadow-sm hover:shadow-md text-xs font-bold transition-all group backdrop-blur-md cursor-pointer"
+        title="Regresar a la página principal de la tienda"
+      >
+        <ArrowLeft className="w-4 h-4 text-gray-500 group-hover:-translate-x-1 group-hover:text-blue-600 transition-transform" />
+        <span>Volver a la Tienda</span>
+      </Link>
+
       {/* Badges decorativos flotantes de contexto */}
-      <div className="hidden lg:flex items-center gap-2 absolute top-5 left-6 px-3 py-1 bg-white/85 backdrop-blur-md border border-gray-200/80 rounded-full shadow-xs text-xs font-semibold text-gray-700">
+      <div className="hidden lg:flex items-center gap-2 absolute top-5 left-48 px-3 py-1 bg-white/85 backdrop-blur-md border border-gray-200/80 rounded-full shadow-xs text-xs font-semibold text-gray-700">
         <Store className="w-3.5 h-3.5 text-blue-600" />
         <span>FashionStore Retail Suite</span>
         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
@@ -117,8 +128,8 @@ export function LoginPage() {
       <div className="relative w-full max-w-[400px] bg-white border border-gray-200 shadow-xl shadow-slate-200/60 rounded-2xl p-5 sm:p-6 z-10 animate-in fade-in zoom-in-95 duration-200 my-auto">
         {/* Cabecera de Marca */}
         <div className="text-center space-y-1.5">
-          <div className="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/20 mb-0.5">
-            <ShoppingBag className="w-5 h-5" />
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-white border border-gray-200/80 shadow-md shadow-slate-200/70 p-2 mb-1">
+            <img src={logoClean} alt="FashionStore Logo" className="w-full h-full object-contain" />
           </div>
           <h1 className="text-2xl font-black tracking-tight text-gray-900">
             FashionStore
@@ -262,6 +273,17 @@ export function LoginPage() {
                 <span className="text-[9px] text-gray-400 group-hover:text-emerald-600">POS</span>
               </button>
             </div>
+          </div>
+
+          {/* Enlace para volver a la tienda principal */}
+          <div className="pt-2 text-center border-t border-gray-100">
+            <Link
+              to="/"
+              className="inline-flex items-center justify-center gap-1.5 text-xs font-bold text-gray-600 hover:text-blue-600 transition group py-1"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 text-gray-400 group-hover:-translate-x-1 group-hover:text-blue-600 transition-transform" />
+              <span>← Volver a la Landing Page / Tienda</span>
+            </Link>
           </div>
 
           {/* Pie de seguridad sutil */}

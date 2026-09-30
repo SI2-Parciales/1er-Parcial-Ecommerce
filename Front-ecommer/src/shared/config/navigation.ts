@@ -24,7 +24,8 @@ export interface NavItem {
 }
 
 export const navigation: NavItem[] = [
-  { name: 'Dashboard Global', href: '/', icon: LayoutDashboard, roles: ['ADMIN'] },
+  { name: 'Ver Tienda (Landing)', href: '/', icon: Store, roles: ['ADMIN', 'BRANCH_MANAGER', 'CASHIER', 'SUPPLIER'] },
+  { name: 'Dashboard Global', href: '/dashboard', icon: LayoutDashboard, roles: ['ADMIN'] },
   { name: 'Dashboard Sucursal', href: '/branch-dashboard', icon: Store, roles: ['ADMIN', 'BRANCH_MANAGER'] },
   { name: 'Punto de Venta', href: '/pos', icon: ShoppingBag, roles: ['ADMIN', 'BRANCH_MANAGER', 'CASHIER'] },
   { name: 'Reservas Probador', href: '/reservations', icon: CalendarClock, roles: ['ADMIN', 'BRANCH_MANAGER', 'CASHIER'] },

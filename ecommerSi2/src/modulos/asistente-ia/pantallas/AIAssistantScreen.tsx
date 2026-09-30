@@ -219,8 +219,12 @@ export const AIAssistantScreen: React.FC<BottomTabTabScreenProps<'AIAssistantTab
         {/* Header Asistente */}
         <View className="bg-white border-b border-gray-200 px-4 pt-3 pb-3 flex-row items-center justify-between shadow-sm">
           <View className="flex-row items-center flex-1">
-            <View className="w-10 h-10 rounded-full bg-brand-primary items-center justify-center mr-3 shadow-sm">
-              <Sparkles color="#FFFFFF" size={20} />
+            <View className="w-10 h-10 rounded-xl bg-white border border-gray-200 items-center justify-center mr-3 shadow-2xs p-1">
+              <Image
+                source={require('../../../../assets/logo-clean.png')}
+                style={{ width: '100%', height: '100%' }}
+                resizeMode="contain"
+              />
             </View>
             <View className="flex-1">
               <View className="flex-row items-center">

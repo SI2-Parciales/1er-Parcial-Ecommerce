@@ -132,3 +132,22 @@ apiClient.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+/**
+ * Cliente HTTP dedicado para el Servicio de Inteligencia Artificial (FastAPI)
+ * Conecta con http://localhost:8000 (o la URL configurada en VITE_AI_SERVICE_URL).
+ * Incluye automáticamente el token Bearer del usuario autenticado.
+ */
+export const aiApiClient = axios.create({
+  baseURL: env.VITE_AI_SERVICE_URL,
+  timeout: 60000,
+});
+
+aiApiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+  const token = useAuthStore.getState().accessToken;
+  if (token && config.headers) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+

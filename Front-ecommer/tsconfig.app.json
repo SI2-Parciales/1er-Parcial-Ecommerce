@@ -24,7 +24,8 @@
       "@core/*": ["./src/core/*"],
       "@shared/*": ["./src/shared/*"],
       "@modulos/*": ["./src/modulos/*"],
-      "@modules/*": ["./src/modulos/*"]
+      "@modules/*": ["./src/modulos/*"],
+      "@assets/*": ["./src/assets/*"]
     },
 
     /* Linting */

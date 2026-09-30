@@ -11,6 +11,8 @@ interface AiState {
   
   // Acciones
   addUserMessage: (prompt: string) => string;
+  addVoiceMessage: (placeholderText?: string) => { userMsgId: string; assistantMsgId: string };
+  updateMessageContent: (messageId: string, content: string) => void;
   appendStreamingChunk: (messageId: string, chunk: string) => void;
   finalizeReport: (messageId: string, report: AiReportResponse) => void;
   setGenerating: (status: boolean) => void;
@@ -20,6 +22,7 @@ interface AiState {
   setBranchFilter: (branchId: string | null) => void;
   clearHistory: () => void;
 }
+
 
 export const useAiStore = create<AiState>((set) => ({
   messages: [],
@@ -55,6 +58,42 @@ export const useAiStore = create<AiState>((set) => ({
     }));
 
     return assistantMsgId;
+  },
+
+  addVoiceMessage: (placeholderText = '🎤 Procesando audio con Whisper...') => {
+    const userMsgId = `usr-${Date.now()}`;
+    const assistantMsgId = `ast-${Date.now() + 1}`;
+    const timestamp = new Date().toISOString();
+
+    const userMessage: AiChatMessage = {
+      id: userMsgId,
+      sender: 'USER',
+      content: placeholderText,
+      timestamp,
+    };
+
+    const assistantPlaceholder: AiChatMessage = {
+      id: assistantMsgId,
+      sender: 'ASSISTANT',
+      content: '',
+      isLoading: true,
+      timestamp,
+    };
+
+    set((state) => ({
+      messages: [...state.messages, userMessage, assistantPlaceholder],
+      isGenerating: true,
+    }));
+
+    return { userMsgId, assistantMsgId };
+  },
+
+  updateMessageContent: (messageId: string, content: string) => {
+    set((state) => ({
+      messages: state.messages.map((msg) =>
+        msg.id === messageId ? { ...msg, content } : msg
+      ),
+    }));
   },
 
   appendStreamingChunk: (messageId: string, chunk: string) => {

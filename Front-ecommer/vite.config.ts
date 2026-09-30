@@ -16,6 +16,7 @@ export default defineConfig({
       '@shared': path.resolve(import.meta.dirname, './src/shared'),
       '@modulos': path.resolve(import.meta.dirname, './src/modulos'),
       '@modules': path.resolve(import.meta.dirname, './src/modulos'),
+      '@assets': path.resolve(import.meta.dirname, './src/assets'),
     }
   },
   build: {

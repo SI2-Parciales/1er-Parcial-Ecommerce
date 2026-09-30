@@ -28,27 +28,41 @@ export function StockAdjustmentModal({ isOpen, onClose, stockItem }: Props) {
  branchId: stockItem.branchId,
  variantId: stockItem.variantId,
  newQuantity: stockItem.availableStock,
- reason: 'MERMA_DANIO',
+ reason: stockItem.availableStock === 0 ? 'CORRECCION_INGRESO' : 'MERMA_DANIO',
  comment: '',
+ currentStock: stockItem.availableStock,
+ garmentName: stockItem.garmentName,
+ sku: stockItem.sku,
+ sizeName: stockItem.sizeName,
+ colorName: stockItem.colorName,
  },
  });
 
  const mutation = useMutation({
  mutationFn: inventoryService.createAdjustment,
  onSuccess: () => {
- queryClient.invalidateQueries({ queryKey: ['inventory', 'stock', stockItem.branchId] });
+ queryClient.invalidateQueries({ queryKey: ['inventory'] });
  reset();
+ setError(null);
  onClose();
  },
  onError: (err: any) => {
- setError(err.message || 'Error al procesar el ajuste');
- }
+ setError(err?.response?.data?.message || err.message || 'Error al procesar el ajuste');
+ },
  });
 
  if (!isOpen) return null;
 
  const onSubmit = (data: StockAdjustmentValues) => {
- mutation.mutate(data);
+ setError(null);
+ mutation.mutate({
+ ...data,
+ currentStock: stockItem.availableStock,
+ garmentName: stockItem.garmentName,
+ sku: stockItem.sku,
+ sizeName: stockItem.sizeName,
+ colorName: stockItem.colorName,
+ });
  };
 
  return (

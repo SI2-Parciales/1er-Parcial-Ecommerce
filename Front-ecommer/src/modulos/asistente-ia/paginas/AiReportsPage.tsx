@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAiStore } from '../almacen/ai.store';
 import { useAiStream } from '../ganchos/useAiStream';
@@ -6,7 +6,7 @@ import { aiService } from '../servicios/ai.service';
 import { AiPromptInput } from '../componentes/AiPromptInput';
 import { SuggestedPromptChips } from '../componentes/SuggestedPromptChips';
 import { DynamicReportRenderer } from '../componentes/DynamicReportRenderer';
-import { Bot, Sparkles, Trash2, User } from 'lucide-react';
+import { Bot, Sparkles, Trash2, User, ChevronDown, ChevronUp } from 'lucide-react';
 
 export function AiReportsPage() {
  const messages = useAiStore((state) => state.messages);
@@ -14,14 +14,18 @@ export function AiReportsPage() {
  const clearHistory = useAiStore((state) => state.clearHistory);
  const selectedBranchId = useAiStore((state) => state.selectedBranchId);
 
- const { submitPrompt } = useAiStream();
+ const { submitPrompt, submitVoicePrompt } = useAiStream();
  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+ const [showSuggestions, setShowSuggestions] = useState(false);
+ const [showWelcomeSuggestions, setShowWelcomeSuggestions] = useState(true);
 
  // Consultar preguntas recomendadas según el contexto
  const { data: suggestedPrompts = [] } = useQuery({
  queryKey: ['ai-suggested-prompts', selectedBranchId],
  queryFn: () => aiService.getSuggestedPrompts(selectedBranchId || undefined),
  });
+
 
  // Scroll automático hacia el último mensaje o token entrante
  useEffect(() => {
@@ -82,14 +86,28 @@ export function AiReportsPage() {
           </div>
 
           <div className="w-full pt-2">
-            <SuggestedPromptChips
-              prompts={suggestedPrompts}
-              onSelect={(p) => submitPrompt(p)}
-              disabled={isGenerating}
-              variant="grid"
-            />
+            <div className="flex items-center justify-between mb-2 px-1">
+              <span className="text-xs font-bold text-gray-700">Sugerencias recomendadas:</span>
+              <button
+                type="button"
+                onClick={() => setShowWelcomeSuggestions(!showWelcomeSuggestions)}
+                className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:text-blue-800 transition cursor-pointer"
+              >
+                <span>{showWelcomeSuggestions ? 'Minimizar sugerencias' : 'Mostrar sugerencias'}</span>
+                {showWelcomeSuggestions ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+            {showWelcomeSuggestions && (
+              <SuggestedPromptChips
+                prompts={suggestedPrompts}
+                onSelect={(p) => submitPrompt(p)}
+                disabled={isGenerating}
+                variant="grid"
+              />
+            )}
           </div>
         </div>
+
       ) : (
         /* Lista de Mensajes del Historial */
         messages.map((msg) => {
@@ -139,21 +157,44 @@ export function AiReportsPage() {
     {/* Barra Inferior Fija de Consulta */}
     <div className="shrink-0 space-y-2">
       {messages.length > 0 && suggestedPrompts.length > 0 && (
-        <div className="px-1">
-          <SuggestedPromptChips
-            prompts={suggestedPrompts.slice(0, 4)}
-            onSelect={(p) => submitPrompt(p)}
-            disabled={isGenerating}
-            variant="pills"
-          />
+        <div className="px-1 space-y-1.5">
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => setShowSuggestions(!showSuggestions)}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-gray-500 hover:text-blue-600 bg-gray-50 hover:bg-blue-50 border border-gray-200 rounded-lg transition-colors cursor-pointer"
+              title={showSuggestions ? "Ocultar sugerencias para ganar espacio" : "Mostrar sugerencias rápidas"}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-blue-500" />
+              <span>{showSuggestions ? 'Ocultar sugerencias' : 'Ver sugerencias rápidas'}</span>
+              {showSuggestions ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+            </button>
+            {showSuggestions && (
+              <span className="text-[10px] text-gray-400 font-medium">Haz clic en una para consultar de inmediato</span>
+            )}
+          </div>
+
+          {showSuggestions && (
+            <div className="animate-in fade-in slide-in-from-bottom-2 duration-150">
+              <SuggestedPromptChips
+                prompts={suggestedPrompts.slice(0, 4)}
+                onSelect={(p) => submitPrompt(p)}
+                disabled={isGenerating}
+                variant="pills"
+              />
+            </div>
+          )}
         </div>
       )}
 
+
  <AiPromptInput
- onSubmit={(prompt) => submitPrompt(prompt)}
- isGenerating={isGenerating}
+  onSubmit={(prompt) => submitPrompt(prompt)}
+  onSubmitVoice={(blob) => submitVoicePrompt(blob)}
+  isGenerating={isGenerating}
  />
  </div>
  </div>
  );
 }
+

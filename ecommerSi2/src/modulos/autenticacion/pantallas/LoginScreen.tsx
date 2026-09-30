@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   StyleSheet,
   StatusBar,
+  Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScreenContainer } from '@shared/components/ScreenContainer';
@@ -124,7 +125,11 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
           {/* Logo y Encabezado de Marca */}
           <View style={styles.headerBox}>
             <View style={styles.logoBadge}>
-              <ShoppingBag size={28} color="#FFFFFF" />
+              <Image
+                source={require('../../../../assets/logo-clean.png')}
+                style={styles.logoImage}
+                resizeMode="contain"
+              />
             </View>
             <View style={styles.brandTag}>
               <Sparkles size={13} color="#2563EB" />
@@ -316,18 +321,25 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   logoBadge: {
-    width: 62,
-    height: 62,
-    backgroundColor: '#0F172A',
+    width: 68,
+    height: 68,
+    backgroundColor: '#FFFFFF',
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
     shadowColor: '#0F172A',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.1,
     shadowRadius: 8,
-    elevation: 4,
+    elevation: 3,
+    padding: 6,
+  },
+  logoImage: {
+    width: '100%',
+    height: '100%',
   },
   brandTag: {
     flexDirection: 'row',

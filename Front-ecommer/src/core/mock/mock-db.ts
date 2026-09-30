@@ -1209,16 +1209,54 @@ export const mockDb = {
 
   async createAdjustment(payload: StockAdjustmentValues): Promise<BranchStockItem> {
     const db = loadDatabase();
-    const item = db.inventory.find(i => matchBranchId(i.branchId, payload.branchId) && i.variantId === payload.variantId);
+    let item = db.inventory.find(i => 
+      matchBranchId(i.branchId, payload.branchId) && 
+      (String(i.variantId) === String(payload.variantId) || (payload.sku && i.sku === payload.sku))
+    );
+
     if (!item) {
-      throw new Error('Ítem de inventario no encontrado');
+      let foundVariant: any = null;
+      let garmentName = payload.garmentName || '';
+      if (db.products && Array.isArray(db.products)) {
+        for (const p of db.products) {
+          const v = p.variants?.find((varItem: any) => 
+            String(varItem.id) === String(payload.variantId) || 
+            (payload.sku && varItem.sku === payload.sku)
+          );
+          if (v) {
+            foundVariant = v;
+            if (!garmentName) garmentName = p.name;
+            break;
+          }
+        }
+      }
+
+      item = {
+        id: `inv-${payload.branchId}-${payload.variantId || Date.now()}`,
+        branchId: payload.branchId,
+        branchName: String(payload.branchId).includes('2') ? 'Sucursal Equipetrol (Santa Cruz)' : 'Sucursal Central (La Paz)',
+        variantId: payload.variantId,
+        sku: payload.sku || foundVariant?.sku || `SKU-${payload.variantId}`,
+        barcode: `777000${payload.variantId}`,
+        garmentName: garmentName || payload.garmentName || 'Prenda de Colección',
+        sizeName: payload.sizeName || foundVariant?.size || 'M',
+        colorName: payload.colorName || foundVariant?.color || 'Predeterminado',
+        category: 'Ropa Casual',
+        availableStock: payload.newQuantity,
+        reservedStock: 0,
+        totalStock: payload.newQuantity,
+        minAlertThreshold: 5,
+      };
+      db.inventory.push(item);
+    } else {
+      item.availableStock = payload.newQuantity;
+      item.totalStock = item.availableStock + (item.reservedStock || 0);
     }
 
-    item.availableStock = payload.newQuantity;
-    item.totalStock = item.availableStock + item.reservedStock;
     saveDatabase(db);
     return item;
   },
+
 
   async createTransfer(payload: StockTransferPayload): Promise<StockTransfer> {
     const db = loadDatabase();
